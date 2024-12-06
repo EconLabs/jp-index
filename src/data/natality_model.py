@@ -117,9 +117,12 @@ class dataTransform():
         return tfr_transform, marginal_effects, rsquared
 
     def errors(self):
-        exp = (2 * 1) - 1
-        variance = (self.tfr.T.sum() ** exp) * (self.fem_pop.T.sum().astype("float") ** -1)
-        return variance
+        variance_list = pd.DataFrame()
+        for i in range(0, self.num_age_groups):
+            exp = (2 * self.fit_lambda[i]) - 1
+            variance = (self.tfr.T.sum() ** exp) * (self.fem_pop.T.sum().astype("float") ** -1)
+            variance_list[i] = pd.concat([pd.Series(variance)], axis=1)
+        return variance_list
 
     
 
@@ -127,7 +130,7 @@ def main():
     nat_data = pd.read_csv("tfr_data.csv").set_index("year")
     female_pop = pd.read_csv("fem_pop.csv").set_index("year")
     transformed = dataTransform(nat_data, female_pop)
-    print(transformed.lambda_fit())
+    print(transformed.errors())
 
     #tfr_transform, marginal_effects, rsquared = dataTransform(nat_data).kernel_transform()
     #nat_model = natModel(tfr_transform, 4)
