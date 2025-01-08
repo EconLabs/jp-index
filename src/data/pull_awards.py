@@ -1,46 +1,50 @@
 import time
 
-import pandas as pd
 import requests
 
-# API configuration
 URL = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
 HEADERS = {"Content-Type": "application/json"}
 
-# Payload with specific filters for the request
-PAYLOAD = {
-    "subawards": False,  # We're only interested in prime awards
-    "limit": 100,  # Limit the number of results per page to 100
-    "filters": {
-        "award_type_codes": ["A", "B", "C", "D"],  # Contracts
-        "time_period": [
-            {"start_date": "2007-10-01", "end_date": "2008-09-30"}  # FY 2008
+
+def build_payload(start_date: str, end_date: str) -> dict:
+    """
+    Build the API request payload for a given date range.
+
+    Args:
+        start_date (str): Start date in format YYYY-MM-DD.
+        end_date (str): End date in format YYYY-MM-DD.
+
+    Returns:
+        dict: Payload with filters for the API request.
+    """
+    return {
+        "subawards": False,
+        "limit": 100,
+        "filters": {
+            "award_type_codes": ["A", "B", "C", "D"],
+            "time_period": [{"start_date": start_date, "end_date": end_date}],
+            "place_of_performance_locations": [{"country": "USA", "state": "PR"}],
+        },
+        "fields": [
+            "Award ID",
+            "Recipient Name",
+            "Start Date",
+            "End Date",
+            "Award Amount",
+            "Awarding Agency",
+            "Awarding Sub Agency",
+            "Funding Agency",
+            "Funding Sub Agency",
+            "Award Type",
         ],
-        "place_of_performance_locations": [
-            {"country": "USA", "state": "PR"}  # Puerto Rico as performance location
-        ],
-    },
-    "fields": [
-        "Award ID",
-        "Recipient Name",
-        "Start Date",
-        "End Date",
-        "Award Amount",
-        "Awarding Agency",
-        "Awarding Sub Agency",
-        "Funding Agency",
-        "Funding Sub Agency",
-        "Award Type",
-    ],
-}
+    }
 
 
-def make_request(url: str, payload: dict, retries: int = 5) -> dict:
+def make_request(payload: dict, retries: int = 5) -> dict:
     """
     Make a POST request to the API with exponential backoff in case of failures.
 
     Args:
-        url (str): API endpoint URL.
         payload (dict): JSON payload with the filters and fields.
         retries (int): Number of retry attempts before giving up.
 
@@ -49,57 +53,46 @@ def make_request(url: str, payload: dict, retries: int = 5) -> dict:
     """
     for attempt in range(retries):
         try:
-            response = requests.post(url, json=payload, headers=HEADERS, timeout=60)
-            response.raise_for_status()  # Raise an exception for 4xx/5xx responses
-            return response.json()  # Return the response as a JSON object
+            response = requests.post(URL, json=payload, headers=HEADERS, timeout=60)
+            response.raise_for_status()
+            return response.json()
         except requests.exceptions.RequestException as error:
-            wait_time = 2**attempt  # Exponential backoff: 2^attempt seconds
+            wait_time = 2**attempt
             print(f"Error: {error}. Retrying in {wait_time} seconds...")
             time.sleep(wait_time)
 
     print("Error: Request failed after multiple retries.")
-    return None  # Return None if all attempts failed
+    return None
 
 
-def get_data() -> None:
+def get_data_for_month(start_date: str, end_date: str, max_pages: int = 1) -> list:
     """
-    Download paginated data from the API and store it in a CSV file.
-    """
-    all_data = []  # Initialize an empty list to store all results
-    page = 1  # Start from the first page
-
-    while True:
-        print(f"Downloading page {page}...")
-        PAYLOAD["page"] = page  # Update the current page in the payload
-
-        response = make_request(URL, PAYLOAD)  # Make the API request
-        if response is None:
-            print("Error: No data received. Stopping execution.")
-            break
-
-        data = response.get("results", [])  # Extract results from the response
-        if not data:
-            print("No more data available.")
-            break
-
-        all_data.extend(data)  # Append the data from the current page
-        page += 1  # Move to the next page
-
-    save_to_csv(all_data)  # Save the collected data to a CSV file
-
-
-def save_to_csv(data: list) -> None:
-    """
-    Save the collected data into a CSV file.
+    Retrieve all award data for a specific month.
 
     Args:
-        data (list): List of dictionaries representing the API results.
+        start_date (str): Start date in format YYYY-MM-DD.
+        end_date (str): End date in format YYYY-MM-DD.
+        max_pages (int): Maximum number of pages to retrieve.
+
+    Returns:
+        list: A list of awards retrieved from the API.
     """
-    df = pd.DataFrame(data)  # Convert the data into a DataFrame
-    output_file = "prime_award_results.csv"  # Define the output file name
-    df.to_csv(output_file, index=False)  # Save the DataFrame to CSV
-    print(f"Data saved to {output_file}")
+    all_data = []
+    for page in range(1, max_pages + 1):
+        print(f"Downloading page {page} for range {start_date} - {end_date}...")
+        payload = build_payload(start_date, end_date)
+        payload["page"] = page
 
+        response = make_request(payload)
+        if response is None:
+            print(f"Error: No data received for range {start_date} - {end_date}.")
+            break
 
-if __name__ == "__main__":
-    get_data()  # Run the data download process
+        data = response.get("results", [])
+        if not data:
+            print(f"No more data available for range {start_date} - {end_date}.")
+            break
+
+        all_data.extend(data)
+
+    return all_data

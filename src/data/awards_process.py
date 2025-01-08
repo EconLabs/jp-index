@@ -1,132 +1,100 @@
-import os
-
-import sys
+from datetime import datetime, timedelta
 
 import pandas as pd
-from sqlmodel import create_engine, Session, SQLModel
-from tqdm import tqdm
-
-# Añadir el directorio raíz del proyecto al sys.path
-sys.path.append(os.path.abspath("/home/jjrm/jp-index-2/src"))
-
-from dao.awards_table import AwardTable
+from sqlmodel import create_engine, SQLModel
+from src.dao.awards_table import create_award_table
+from src.data.pull_awards import (
+    get_data_for_month,
+)
 
 
-class AwardDataCleanerInserter:
-    def __init__(
-        self,
-        data_dir: str = "data",
-        database_url: str = "sqlite:///db.sqlite",
-        debug: bool = False,
-    ):
-        self.data_dir = data_dir
-        self.database_url = database_url
+DATABASE_URL = "sqlite:///db.sqlite"
+
+
+class AwardDataProcessor:
+    def __init__(self, database_url: str = DATABASE_URL):
         self.engine = create_engine(database_url)
-        self.debug = debug
-        self._prepare_directories()
-        self._create_table()
+        create_award_table(self.engine)
 
-    def _prepare_directories(self):
-        os.makedirs(f"{self.data_dir}/processed", exist_ok=True)
-
-    def _create_table(self):
-        SQLModel.metadata.create_all(self.engine)
-
-    def process_and_insert(self):
-        raw_files = [
-            f"{self.data_dir}/raw/{file}"
-            for file in os.listdir(f"{self.data_dir}/raw")
-            if file.endswith(".csv")
-        ]
-
-        for raw_file in raw_files:
-            try:
-                print(f"\033[0;34mProcessing: {raw_file}\033[0m")
-                cleaned_df = self.clean_data(raw_file)
-
-                # Ensure `cleaned_df` is a DataFrame
-                if isinstance(cleaned_df, pd.Series):
-                    cleaned_df = cleaned_df.to_frame()
-
-                # Save cleaned data to a processed file
-                processed_file = raw_file.replace("/raw/", "/processed/")
-                cleaned_df.to_csv(processed_file, index=False)
-
-                # Insert cleaned data into the database
-                self.insert_into_db(cleaned_df)
-                print(
-                    f"\033[0;32mSUCCESS: \033[0mData from {raw_file} inserted into the database"
-                )
-            except Exception as e:
-                print(
-                    f"\033[0;31mERROR: \033[0mFailed to process {raw_file}. Reason: {e}"
-                )
-
-    def clean_data(self, file_path: str) -> pd.DataFrame:
+    def clean_data(self, raw_data: list) -> pd.DataFrame:
         """
-        Cleans the raw awards data CSV file.
-
-        Args:
-            file_path (str): Path to the raw CSV file.
-
-        Returns:
-            pd.DataFrame: Cleaned DataFrame ready for insertion into the database.
+        Limpia y transforma los datos para la base de datos.
         """
+        df = pd.DataFrame(raw_data)
+        column_mapping = {
+            "internal_id": "internal_id",
+            "Award ID": "award_id",
+            "Recipient Name": "recipient_name",
+            "Start Date": "start_date",
+            "End Date": "end_date",
+            "Award Amount": "award_amount",
+            "Awarding Agency": "awarding_agency",
+            "Awarding Sub Agency": "awarding_subagency",
+            "Funding Agency": "funding_agency",
+            "Funding Sub Agency": "funding_subagency",
+            "Award Type": "award_type",
+            "awarding_agency_id": "awarding_agency_id",
+            "agency_slug": "agency_slug",
+            "generated_internal_id": "generated_internal_id",
+        }
+
+        # Renombrar columnas según el mapeo
+        df = df.rename(columns=column_mapping)
+
+        # Asegurar que todas las columnas existan
+        for col in column_mapping.values():
+            if col not in df.columns:
+                df[col] = None
+
+        # Convertir tipos de datos
+        df["award_amount"] = pd.to_numeric(df["award_amount"], errors="coerce").fillna(
+            0
+        )
+        df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce").dt.date
+        df["end_date"] = pd.to_datetime(df["end_date"], errors="coerce").dt.date
+
+        return df
+
+    def process_and_insert(self, start_date: str, end_date: str):
+        """
+        Procesa e inserta los datos en la base de datos.
+        """
+        raw_data = get_data_for_month(start_date, end_date)
+        if not raw_data:
+            print(f"No se descargaron datos para el rango {start_date} - {end_date}.")
+            return
+
+        cleaned_data = self.clean_data(raw_data)
+        print(
+            f"Datos limpiados para el rango {start_date} - {end_date} (vista previa):"
+        )
+        print(cleaned_data.head())
+
         try:
-            # Read the CSV file into a DataFrame
-            df = pd.read_csv(file_path)
-
-            # Perform any necessary cleaning steps here
-            # Example: Rename columns to match database schema
-            df = df.rename(
-                columns={
-                    "Award ID": "award_id",
-                    "Recipient Name": "recipient_name",
-                    "Start Date": "start_date",
-                    "End Date": "end_date",
-                    "Award Amount": "award_amount",
-                    "Awarding Agency": "awarding_agency",
-                    "Awarding Sub Agency": "awarding_sub_agency",
-                    "Funding Agency": "funding_agency",
-                    "Funding Sub Agency": "funding_sub_agency",
-                    "Award Type": "award_type",
-                }
+            with self.engine.begin() as connection:
+                cleaned_data.to_sql(
+                    "awardtable", con=connection, if_exists="append", index=False
+                )
+            print(
+                f"Datos insertados exitosamente para el rango {start_date} - {end_date}."
             )
-
-            # Optional: Drop rows with missing critical data
-            df = df.dropna(subset=["award_id", "award_amount"])
-
-            # Convert date columns to proper datetime format
-            df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
-            df["end_date"] = pd.to_datetime(df["end_date"], errors="coerce")
-
-            # Fill or clean up other columns as needed
-            df["award_amount"] = df["award_amount"].fillna(0)
-
-            return df
-        except Exception as e:
-            print(f"\033[0;31mERROR: \033[0mFailed to clean {file_path}. Reason: {e}")
-            raise
-
-    def insert_into_db(self, cleaned_df: pd.DataFrame):
-        """
-        Inserts the cleaned DataFrame into the database.
-
-        Args:
-            cleaned_df (pd.DataFrame): Cleaned DataFrame.
-        """
-        try:
-            with Session(self.engine) as session:
-                for _, row in tqdm(
-                    cleaned_df.iterrows(),
-                    total=cleaned_df.shape[0],
-                    desc="Inserting into DB",
-                ):
-                    award = AwardTable(**row.to_dict())
-                    session.add(award)
-                session.commit()
         except Exception as e:
             print(
-                f"\033[0;31mERROR: \033[0mFailed to insert data into the database. Reason: {e}"
+                f"Error insertando datos para el rango {start_date} - {end_date}: {e}"
             )
-            raise
+
+
+if __name__ == "__main__":
+    processor = AwardDataProcessor()
+
+    start_year = 2008
+    end_year = 2025
+
+    for year in range(start_year, end_year + 1):
+        for month in range(1, 13):
+            month_start = datetime(year, month, 1).strftime("%Y-%m-%d")
+            next_month = (datetime(year, month, 28) + timedelta(days=4)).replace(day=1)
+            month_end = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            print(f"Procesando datos para el rango {month_start} - {month_end}...")
+            processor.process_and_insert(month_start, month_end)
