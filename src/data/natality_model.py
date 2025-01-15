@@ -80,7 +80,7 @@ class natModel():
         year_effects = self.year_effects()
         sing_vals = self.sing_vals()
         averages = self.averages
-        final_matrix = np.zeros(shape=(self.num_years, self.num_age_groups))
+        final_matrix = pd.DataFrame(np.zeros(shape=(self.num_years, self.num_age_groups)))
         temp_matrix = pd.DataFrame()
         
         for k in range(0, self.n_components):
@@ -91,7 +91,7 @@ class natModel():
                 temp_matrix[j] = effects_i
             final_matrix = final_matrix + temp_matrix
 
-        final_matrix = pd.DataFrame(final_matrix).T
+        final_matrix = pd.DataFrame(final_matrix)
         for i in final_matrix.columns:
             final_matrix[i] = final_matrix[i] + averages[i]
 
@@ -160,11 +160,12 @@ def main():
     nat_data = nat_data.T
     female_pop = female_pop.T
     data_transformed = dataTransform(female_pop, nat_data)
-    nat_model = natModel(data_transformed.tfr, 1, data_transformed.errors())
-    #print(nat_model.age_effects())
-    #print(nat_model.year_effects())
+    nat_model = natModel(data_transformed.tfr, 6, data_transformed.errors())
+    print(data_transformed.tfr)
+    print("\n")
     print(nat_model.forecasted_tfr())
-    print(nat_model.tfr.T)
+    print("\n")
+    print(nat_model.forecasted_tfr())
 
     #tfr_transform, marginal_effects, rsquared = dataTransform(nat_data).kernel_transform()
     #nat_model = natModel(tfr_transform, 4)
