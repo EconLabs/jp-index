@@ -65,7 +65,7 @@ def make_request(payload: dict, retries: int = 5) -> dict:
     return None
 
 
-def get_data_for_month(start_date: str, end_date: str, max_pages: int = 1) -> list:
+def get_data_for_month(start_date: str, end_date: str) -> list:
     """
     Retrieve all award data for a specific month.
 
@@ -78,21 +78,27 @@ def get_data_for_month(start_date: str, end_date: str, max_pages: int = 1) -> li
         list: A list of awards retrieved from the API.
     """
     all_data = []
-    for page in range(1, max_pages + 1):
-        print(f"Downloading page {page} for range {start_date} - {end_date}...")
-        payload = build_payload(start_date, end_date)
-        payload["page"] = page
 
-        response = make_request(payload)
-        if response is None:
-            print(f"Error: No data received for range {start_date} - {end_date}.")
-            break
+    try:
+        page = 1
+        while True:
+            print(f"Downloading page {page} for range {start_date} - {end_date}...")
+            payload = build_payload(start_date, end_date)
+            payload["page"] = page
 
-        data = response.get("results", [])
-        if not data:
-            print(f"No more data available for range {start_date} - {end_date}.")
-            break
+            response = make_request(payload)
+            if response is None:
+                print(f"Error: No data received for range {start_date} - {end_date}.")
+                break
 
-        all_data.extend(data)
+            data = response.get("results", [])
+            if not data:
+                print(f"No more data available for range {start_date} - {end_date}.")
+                break
+
+            all_data.extend(data)
+            page += 1
+    except:
+        None
 
     return all_data

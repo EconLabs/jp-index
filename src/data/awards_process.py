@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-
 import pandas as pd
 from sqlmodel import create_engine, SQLModel
 from src.dao.awards_table import create_award_table
@@ -84,17 +83,20 @@ class AwardDataProcessor:
             )
 
 
-if __name__ == "__main__":
+#if __name__ == "__main__":
+def call_test():
     processor = AwardDataProcessor()
 
-    start_year = 2008
-    end_year = 2025
+    start_year = 2013
+    end_year = 2013
 
     for year in range(start_year, end_year + 1):
-        for month in range(1, 13):
+        for month in range(1, 3):
             month_start = datetime(year, month, 1).strftime("%Y-%m-%d")
             next_month = (datetime(year, month, 28) + timedelta(days=4)).replace(day=1)
             month_end = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
 
             print(f"Procesando datos para el rango {month_start} - {month_end}...")
             processor.process_and_insert(month_start, month_end)
+            #print(len(get_data_for_month(month_start, month_end)))
+            #print(get_data_for_month(month_start, month_end, 100))
