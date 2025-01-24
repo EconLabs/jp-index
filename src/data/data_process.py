@@ -288,3 +288,21 @@ class DataIndex(DataPull):
 
             clean_df = pl.concat([clean_df, tmp], how="vertical")
         return clean_df
+
+    def process_activity(self, update:bool=False) -> ibis.expr.types.relations.Table:
+        
+        if not os.path.exists(f"{self.data_dir}/raw/activity.xls") or update:
+            self.pull_consumer(f"{self.data_dir}/raw/activity.xls")
+        if "activitytable" not in self.conn.list_tables() or self.conn.table("activitytable").count().execute() == 0 or update:
+            df = pl.read_excel(f"{self.data_dir}/raw/activity.xls", sheet_id=3)
+            df = df.select(pl.nth(0), pl.nth(1))
+            df = df.filter((pl.nth(0).str.strip_chars().str.len_chars() <= 8) & (pl.nth(0).str.strip_chars().str.len_chars() >= 6))
+            df = df.with_columns(pl.nth(0).str.to_lowercase())
+            df = df.with_columns(
+                date=pl.nth(0).str.replace("m", "-") + "-01"
+            )
+            df = df.select(
+                date=pl.col("date").str.to_datetime(),
+                index=pl.nth(1).cast(pl.Float64)
+            )
+            self.conn.insert("activitytable", df)
