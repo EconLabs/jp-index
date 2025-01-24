@@ -4,6 +4,10 @@ from typing import Optional
 class ConsumerTable(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     date: str
+    year: int
+    month: int
+    quarter: int
+    fiscal: int
     ropa: float
     ropa_de_hombres: float
     ropa_de_ninos: float
