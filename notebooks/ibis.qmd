@@ -21,12 +21,18 @@ ibis.options.interactive = True
 
 ```{python}
 di = DataIndex()
+di.consumer_data(agg="fiscal")
 ```
 
 ```{python}
-df = di.consumer_data()
-df
-
+from ibis import _
+# df = di.consumer_data(agg="yearly")
+df = di.process_consumer()
+variables = df.columns
+remove = ["id", "date", "month", "year", "quarter", "fiscal"]
+variables = [var for var in variables if var not in remove]
+aggregation_exprs = {var: getattr(_, var).sum().name(var) for var in variables}
+df.group_by(["year", "quarter"]).aggregate(**aggregation_exprs)
 ```
 
 ```{python}

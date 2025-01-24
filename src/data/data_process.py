@@ -3,6 +3,8 @@ from ..dao.consumer_table import create_consumer_table
 from sqlmodel import create_engine
 from .data_pull import DataPull
 from datetime import datetime
+from ibis import _
+import ibis.expr.types as it
 import polars.selectors as cs
 import polars as pl
 import ibis
@@ -254,10 +256,24 @@ class DataIndex(DataPull):
         else:
             return self.conn.table("consumertable")
 
-    def consumer_data(self, agg=str):
+    def consumer_data(self, agg: str) -> it.Table:
         df = self.process_consumer()
+        variables = df.columns
+        remove = ["id", "date", "month", "year", "quarter", "fiscal"]
+        variables = [var for var in variables if var not in remove]
+        aggregation_exprs = {var: getattr(_, var).sum().name(var) for var in variables}
 
-        return df
+        match agg:
+            case "monthly":
+                return df
+            case "quarterly":
+                return df.group_by(["year", "quarter"]).aggregate(**aggregation_exprs)
+            case "yearly":
+                return df.group_by("year").aggregate(**aggregation_exprs)
+            case "fiscal":
+                return df.group_by("fiscal").aggregate(**aggregation_exprs)
+            case _:
+                raise ValueError("Invalid aggregation")
 
     def clean_name(self, name: str) -> str:
         """
@@ -422,35 +438,32 @@ class DataIndex(DataPull):
             tmp = df
             tmp = tmp.rename({column: column_name})
             tmp = tmp.with_columns(
-                pl.when(pl.col("Meses").str.strip_chars().str.to_lowercase() == "enero")
+                Meses=pl.col("Meses").str.strip_chars().str.to_lowercase()
+            )
+            tmp = tmp.with_columns(
+                pl.when(pl.col("Meses") == "enero")
                 .then(1)
-                .when(pl.col("Meses").str.strip_chars().str.to_lowercase() == "febrero")
+                .when(pl.col("Meses") == "febrero")
                 .then(2)
-                .when(pl.col("Meses").str.strip_chars().str.to_lowercase() == "marzo")
+                .when(pl.col("Meses") == "marzo")
                 .then(3)
-                .when(pl.col("Meses").str.strip_chars().str.to_lowercase() == "abril")
+                .when(pl.col("Meses") == "abril")
                 .then(4)
-                .when(pl.col("Meses").str.strip_chars().str.to_lowercase() == "mayo")
+                .when(pl.col("Meses") == "mayo")
                 .then(5)
-                .when(pl.col("Meses").str.strip_chars().str.to_lowercase() == "junio")
+                .when(pl.col("Meses") == "junio")
                 .then(6)
-                .when(pl.col("Meses").str.strip_chars().str.to_lowercase() == "julio")
+                .when(pl.col("Meses") == "julio")
                 .then(7)
-                .when(pl.col("Meses").str.strip_chars().str.to_lowercase() == "agosto")
+                .when(pl.col("Meses") == "agosto")
                 .then(8)
-                .when(
-                    pl.col("Meses").str.strip_chars().str.to_lowercase() == "septiembre"
-                )
+                .when(pl.col("Meses") == "septiembre")
                 .then(9)
-                .when(pl.col("Meses").str.strip_chars().str.to_lowercase() == "octubre")
+                .when(pl.col("Meses") == "octubre")
                 .then(10)
-                .when(
-                    pl.col("Meses").str.strip_chars().str.to_lowercase() == "noviembre"
-                )
+                .when(pl.col("Meses") == "noviembre")
                 .then(11)
-                .when(
-                    pl.col("Meses").str.strip_chars().str.to_lowercase() == "diciembre"
-                )
+                .when(pl.col("Meses") == "diciembre")
                 .then(12)
                 .alias("month")
             )
