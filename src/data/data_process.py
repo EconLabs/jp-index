@@ -347,6 +347,11 @@ class DataIndex(DataPull):
         else:
             return self.conn.table("indicatorstable")
 
+    def jp_index_data(self, agg: str) -> it.Table:
+        df = self.process_jp_index()
+        variables = df.columns
+        remove = ["id", "date"]
+
     def process_sheet(self, file_path: str, sheet_id: int) -> pl.DataFrame:
         """
         Processes a sheet from the economic indicators data and returns a DataFrame
