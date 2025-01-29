@@ -77,11 +77,10 @@ class mortModel():
             values_list = []
             for j in range(0,16):
                 # Calculate mortality rate from formula (mx,t = ax + s1*bx*kt) and append result to empty list
-                values_list.append(np.exp(self.mort_constants()[j] + (self.scaling_eigenvalue()*self.age_constants()[j]*projected_constants[i])))
+                values_list.append(np.exp(self.mort_constants()[j] + (self.singular_values()*self.age_constants()[j]*projected_constants[i])))
                 print(f"Age group {j} for year {i+int(self.death_rate.columns.values[0])} done")
             # Add list of results to the mortality DataFrame
             mortality[i+int(self.death_rate.columns.values[0])] = pd.concat([pd.Series(values_list)], axis=1)
-            print(f"Year {i+int(self.death_rate.columns.values[0])} done")
         return mortality
     
     def year_constants_projection(self, n_years, p=0, d=1, q=0, ext_constants = None):
@@ -108,7 +107,8 @@ def main():
     exposure_female = pd.read_csv("exposure_female.csv").set_index("age_group")
     lc_m = mortModel(deaths_male, exposure_male)
     lc_f = mortModel(deaths_female, exposure_female)
-    print(lc_m.year_constants_projection(30))
+    #lc_m.mortality_rate(lc_m.year_constants_projection(30)).to_csv("male_mortality_rate_2050.csv")
+    #lc_f.mortality_rate(lc_f.year_constants_projection(30)).to_csv("female_mortality_rate_2050.csv")
 
 if __name__ == "__main__":
     main()

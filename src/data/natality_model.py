@@ -10,29 +10,29 @@ from scipy.stats import boxcox
 
 class natModel():
     def __init__(self, tfr, n_components, error):
-        self.tfr = tfr
+        self.tfr = np.log(tfr)
         self.n_components = n_components
         self.error = error
-        self.num_age_groups = len(tfr.columns)
+        self.num_age_groups = len(tfr.index)
         self.num_years = len(tfr.index)
         self.start_year = tfr.index[0]
         self.averages = self.nat_averages()
         self.centered_data = self.centralized_frame()
     
     def nat_averages(self):
-        aggregates = list(self.tfr.sum())
+        aggregates = list(self.tfr.T.sum())
         averages = []
-        for i in range(0, len(self.tfr.columns.values)):
+        for i in range(0, len(self.tfr.index)):
             averages.append(float(aggregates[i] / self.tfr.index.size))
         return averages
 
 
     def centralized_frame(self):
-        centered_matrix = pd.DataFrame(index = self.tfr.index)
-        tfr_t = self.tfr.copy().T.reset_index(drop=True).T
+        tfr_t = self.tfr.copy().reset_index(drop=True).T
+        centered_matrix = pd.DataFrame(index = tfr_t.index)
         for i in range(len(self.averages)):
             centered_matrix[i] = pd.concat([pd.Series(tfr_t[i] - self.averages[i])], axis=1)
-        return centered_matrix
+        return centered_matrix.T
     
     def age_effects(self):
         u, s, vt = np.linalg.svd(self.centered_data)
@@ -75,12 +75,12 @@ class natModel():
         return y_effects_f
     
 
-    def forecasted_tfr(self):
+    def forecasted_tfr(self, projected_eff):
         age_effects = self.age_effects()
-        year_effects = self.year_effects()
+        year_effects = projected_eff
         sing_vals = self.sing_vals()
         averages = self.averages
-        final_matrix = pd.DataFrame(np.zeros(shape=(self.num_years, self.num_age_groups)))
+        final_matrix = pd.DataFrame(np.zeros(shape=(self.num_age_groups, len(year_effects))))
         temp_matrix = pd.DataFrame()
         
         for k in range(0, self.n_components):
@@ -92,10 +92,10 @@ class natModel():
             final_matrix = final_matrix + temp_matrix
 
         final_matrix = pd.DataFrame(final_matrix)
+        final_matrix = final_matrix.T
         for i in final_matrix.columns:
-            final_matrix[i] = final_matrix[i] + averages[i]
-
-        return final_matrix
+            final_matrix[i] = np.exp(final_matrix[i] + averages[i])
+        return final_matrix.T
 
 
 class dataTransform():
@@ -161,30 +161,7 @@ def main():
     female_pop = female_pop.T
     data_transformed = dataTransform(female_pop, nat_data)
     nat_model = natModel(data_transformed.tfr, 6, data_transformed.errors())
-    print(data_transformed.tfr)
-    print("\n")
-    print(nat_model.forecasted_tfr())
-    print("\n")
-    print(nat_model.forecasted_tfr())
-
-    #tfr_transform, marginal_effects, rsquared = dataTransform(nat_data).kernel_transform()
-    #nat_model = natModel(tfr_transform, 4)
-
-    #tfr_projection = nat_model.project(n_years=30)
-    #tfr_projection.plot()
-    #plt.show()
-    #err = nat_model.centralized_frame() - pred_tfr
-    #j = 0
-    #for i in rsquared:
-    #    print(f"R^2 of age group {j}: {i}")
-    #    j =+ 1
-
-    # Plot
-    #fig, axes = plt.subplots(nrows = 1, ncols=3)
-    #nat_model.centralized_frame().plot(ax=axes[0], title="Original Centralized TFR")
-    #pred_tfr.plot(ax=axes[1], title="Kernel Regression TFR")
-    #err.plot(ax=axes[2], title="Kernel Regression Errors vs Original Data")
-    #plt.show()
+    #nat_model.forecasted_tfr(nat_model.project(30)).to_csv("fert_rates_2050.csv")
     
 if __name__ == "__main__":
     main()
