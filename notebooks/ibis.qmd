@@ -1,0 +1,53 @@
+---
+title: "Developing consummer index"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+---
+
+```{python}
+import os 
+os.chdir('..')
+```
+
+```{python}
+from src.data.data_process import DataIndex
+import polars as pl
+import ibis
+
+ibis.options.interactive = True
+```
+
+```{python}
+di = DataIndex()
+di.consumer_data(agg="fiscal")
+```
+
+```{python}
+from ibis import _
+# df = di.consumer_data(agg="yearly")
+df = di.process_consumer()
+variables = df.columns
+remove = ["id", "date", "month", "year", "quarter", "fiscal"]
+variables = [var for var in variables if var not in remove]
+aggregation_exprs = {var: getattr(_, var).sum().name(var) for var in variables}
+df.group_by(["year", "quarter"]).aggregate(**aggregation_exprs)
+```
+
+```{python}
+df = pl.read_parquet("test.parquete").select(["date"])
+df = df.with_columns(
+    year=pl.col("date").str.slice(0,4).cast(pl.Int64),
+    month=pl.col("date").str.slice(5,2).cast(pl.Int64)
+)
+df = df.with_columns(
+    pl.when((pl.col("month") >= 1) & (pl.col("month") <= 3)).then(1)
+      .when((pl.col("month") >= 4) & (pl.col("month") <= 6)).then(2)
+      .when((pl.col("month") >= 7) & (pl.col("month") <= 9)).then(3)
+      .when((pl.col("month") >= 10) & (pl.col("month") <= 12)).then(4)
+      .otherwise(0).alias("quarter"),
+    pl.when(pl.col("month") > 6).then(pl.col("year") + 1)
+      .otherwise(pl.col("year")).alias("fiscal")
+)
+```

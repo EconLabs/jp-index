@@ -8,10 +8,4 @@ dependencies:
   - fastexcel=0.11.5
   - tqdm=4.66.5
   - sqlmodel==0.0.22
-  - pandas==2.2.3
-  - requests
-
-
-
-
-
+  # add pandas
