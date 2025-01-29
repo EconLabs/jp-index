@@ -9,9 +9,10 @@ from statsmodels.tsa.arima.model import ARIMA
 from scipy.stats import boxcox
 
 class natModel():
-    def __init__(self, tfr, n_components):
+    def __init__(self, tfr, n_components, error):
         self.tfr = tfr
         self.n_components = n_components
+        self.error = error
         self.num_age_groups = len(tfr.columns)
         self.num_years = len(tfr.index)
         self.start_year = tfr.index[0]
@@ -34,28 +35,29 @@ class natModel():
         return centered_matrix
     
     def age_effects(self):
+        u, s, vt = np.linalg.svd(self.centered_data)
+        u = pd.DataFrame(u)
         age_effects = pd.DataFrame()
-        u, s, vt = svd(self.centered_data)
-        vt = pd.DataFrame(vt)
         for i in range(0, self.n_components):
-            age_effects[i] = pd.concat([vt.iloc[i]])
+            age_effects[i] = u[i]
         return age_effects
         
     def year_effects(self):
-        year_effects = pd.DataFrame()
-        u, s, vt = svd(self.centered_data)
-        u = pd.DataFrame(u)
+        u, s, vt = np.linalg.svd(self.centered_data)
+        vt = pd.DataFrame(vt)
+        age_effects = pd.DataFrame()
         for i in range(0, self.n_components):
-            year_effects[i] = pd.concat([u[i]])
-        return year_effects
-        
+            age_effects[i] = vt.iloc[i]
+        return age_effects
+    
     def sing_vals(self):
-        singular_values = pd.Series()
-        u, s, vt = svd(self.centered_data)
+        u, s, vt = np.linalg.svd(self.centered_data)
         s = pd.Series(s)
+        sing_vals = pd.Series()
         for i in range(0, self.n_components):
-            singular_values[i] = s[i]
-        return singular_values
+            sing_vals[i] = s[i]
+        return sing_vals
+        
     
     def project(self, n_years, p=0, d=1, q=0, ext_effects = None):
         if ext_effects != None:
@@ -65,28 +67,53 @@ class natModel():
 
         # Arima
         y_effects_f = pd.DataFrame()
-        for i in y_effects:
+        for i in y_effects.columns:
             model = ARIMA(y_effects[i], order=(p,d,q))
-            model_fit = model.fit()
+            model_fit = model.fit(method_kwargs={'maxiter':2000})
             y_effects_f[i] = pd.concat([pd.Series(model_fit.forecast(n_years))])
         y_effects_f = pd.concat([y_effects, y_effects_f], axis=0)
         return y_effects_f
     
 
     def forecasted_tfr(self):
-        coefficients = ...
+        age_effects = self.age_effects()
+        year_effects = self.year_effects()
+        sing_vals = self.sing_vals()
+        averages = self.averages
+        final_matrix = pd.DataFrame(np.zeros(shape=(self.num_years, self.num_age_groups)))
+        temp_matrix = pd.DataFrame()
+        
+        for k in range(0, self.n_components):
+            year_temp = pd.Series(year_effects[k])
+            age_temp = pd.Series(age_effects[k])
+            for j in range(0, len(year_temp)):
+                effects_i = year_temp[j] * age_temp * sing_vals[k]
+                temp_matrix[j] = effects_i
+            final_matrix = final_matrix + temp_matrix
+
+        final_matrix = pd.DataFrame(final_matrix)
+        for i in final_matrix.columns:
+            final_matrix[i] = final_matrix[i] + averages[i]
+
+        return final_matrix
 
 
 class dataTransform():
-    def __init__(self, tfr, fem_pop):
-        self.tfr = tfr
+    def __init__(self, fem_pop, births):
+        self.births = births
         self.fem_pop = fem_pop
-        self.fem_columns = self.fem_pop.columns
-        self.columns =  self.tfr.columns
-        self.num_age_groups = len(tfr.columns)
+        self.columns = fem_pop.columns
+        self.tfr = self.fertility_rate()
+        self.num_age_groups = len(fem_pop.columns)
         self.fit_data = self.box_cox_fit()
         self.fit_lambda = self.lambda_fit()
 
+    def fertility_rate(self):
+        tfr = pd.DataFrame(index=self.fem_pop.index)
+        for i in self.columns:
+            tfr[i] = pd.concat([self.births[i] / self.fem_pop[i]])
+        return tfr
+    
     def box_cox_fit(self):
         fitted_data = pd.DataFrame()
         for i in range(0, self.num_age_groups):
@@ -117,20 +144,28 @@ class dataTransform():
         return tfr_transform, marginal_effects, rsquared
 
     def errors(self):
-        variance_list = pd.DataFrame()
-        for i in range(0, self.num_age_groups):
-            exp = (2 * self.fit_lambda[i]) - 1
-            variance = (self.tfr.T.sum() ** exp) * (self.fem_pop.T.sum().astype("float") ** -1)
-            variance_list[i] = pd.concat([pd.Series(variance)], axis=1)
-        return variance_list
+        variance = pd.DataFrame(index=self.tfr.index)
+        j = 0
+        for i in self.columns:
+            lambda_err = self.births[i].sum(axis=0) / self.fem_pop[i].sum(axis=0)
+            exp = 2*lambda_err - 1
+            variance[j] = pd.concat([(self.tfr[i]**exp)*(self.fem_pop[i].astype("float") ** -1)])
+            j += 1
 
-    
+        return variance
 
 def main():
-    nat_data = pd.read_csv("tfr_data.csv").set_index("year")
+    nat_data = pd.read_csv("births.csv").set_index("year")
     female_pop = pd.read_csv("fem_pop.csv").set_index("year")
-    transformed = dataTransform(nat_data, female_pop)
-    print(transformed.errors())
+    nat_data = nat_data.T
+    female_pop = female_pop.T
+    data_transformed = dataTransform(female_pop, nat_data)
+    nat_model = natModel(data_transformed.tfr, 6, data_transformed.errors())
+    print(data_transformed.tfr)
+    print("\n")
+    print(nat_model.forecasted_tfr())
+    print("\n")
+    print(nat_model.forecasted_tfr())
 
     #tfr_transform, marginal_effects, rsquared = dataTransform(nat_data).kernel_transform()
     #nat_model = natModel(tfr_transform, 4)
