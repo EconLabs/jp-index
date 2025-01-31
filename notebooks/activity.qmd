@@ -1,0 +1,37 @@
+---
+title: "Developing consummer index"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+---
+
+```{python}
+import os 
+os.chdir('..')
+```
+
+
+```{python}
+from src.data.data_process import DataIndex
+import polars as pl
+```
+
+```{python}
+d = DataIndex()
+d.pull_activity("data/raw/test.xls")
+```
+
+```{python}
+df = pl.read_excel("data/raw/test.xls", sheet_id=3)
+df = df.select(pl.nth(0), pl.nth(1))
+df = df.filter((pl.nth(0).str.strip_chars().str.len_chars() <= 8) & (pl.nth(0).str.strip_chars().str.len_chars() >= 6))
+df = df.with_columns(pl.nth(0).str.to_lowercase())
+df = df.with_columns(
+  date=pl.nth(0).str.replace("m", "-") + "-01"
+)
+df.select(
+  date=pl.col("date").str.to_datetime(),
+  index=pl.nth(1).cast(pl.Float64)
+)
+```

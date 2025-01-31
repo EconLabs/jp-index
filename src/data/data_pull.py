@@ -32,7 +32,6 @@ class DataPull:
         url = "https://jp.pr.gov/wp-content/uploads/2024/09/Indicadores_Economicos_9.13.2024.xlsx"
         self.pull_file(url, file_path)
 
-
     def pull_consumer(self, file_path: str):
         session = requests.Session()
         retry = Retry(
@@ -87,8 +86,21 @@ class DataPull:
                                   desc='Downloading'):
                     if chunk:  # Filter out keep-alive new chunks
                         file.write(chunk)
-            if self.debug:
-                print(f"\033[0;32mSUCCESS: \033[0mDownloaded file to {file_path}")
+            self.debug_log(f"Downloaded file to {file_path}", "SUCCESS")
         else:
-            if self.debug:
-                print(f"\033[0;31mERROR: \033[0mFailed to download file. Status code: {response.status_code}")
+            self.debug_log(f"Failed to download file: {response.status_code}", "ERROR")
+
+    def pull_activity(self, file_path:str):
+        url = "https://www.bde.pr.gov/BDE/PREDDOCS/I_EAI.XLS"
+        self.pull_file(url, file_path)
+        self.debug_log(f"Downloaded file to {file_path}", "SUCCESS")
+
+    def debug_log(self, message:str, level:str) -> None:
+        if self.debug:
+            match level:
+                case "ERROR":
+                    print(f"\033[0;31mERROR: \033[0m {message}")
+                case "SUCCESS":
+                    print(f"\033[0;32mSUCCESS: \033[0m {message}")
+                case "INFO":
+                    print(f"\033[0;36mINFO: \033[0m {message}")
