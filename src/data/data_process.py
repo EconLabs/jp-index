@@ -19,7 +19,6 @@ class DataIndex(DataPull):
     def __init__(
         self,
         database_url: str = "sqlite:///db.sqlite",
-        data_dir: str = "data",
         debug: bool = False,
     ):
         """

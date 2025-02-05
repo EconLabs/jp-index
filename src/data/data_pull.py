@@ -3,21 +3,24 @@ from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import requests
 import os
+import logging
 import zipfile
 import pandas as pd
 
 
 class DataPull:
-    def __init__(self, debug: bool = False):
-        self.debug = debug
+    def __init__(self, data_dir: str = "data"):
+        self.data_dir = data_dir
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+            datefmt="%d-%b-%y %H:%M:%S",
+            filename="data_process.log",
+        )
 
     def pull_file(self, url: str, filename: str, verify: bool = True) -> None:
         if os.path.exists(filename):
-            if self.debug:
-                print(
-                    "\033[0;36mNOTICE: \033[0m"
-                    + f"File {filename} already exists, skipping download"
-                )
+            logging.info(f"File {filename} already exists, skipping download")
         else:
             chunk_size = 10 * 1024 * 1024
 
@@ -38,8 +41,7 @@ class DataPull:
                                 bar.update(
                                     len(chunk)
                                 )  # Update the progress bar with the size of the chunk
-            if self.debug:
-                print("\033[0;32mSUCCESS: \033[0m" + f"Downloaded {filename}")
+            logging.info(f"Downloaded {filename}")
 
     def pull_economic_indicators(self, file_path: str):
         url = "https://jp.pr.gov/wp-content/uploads/2024/09/Indicadores_Economicos_9.13.2024.xlsx"
@@ -77,35 +79,37 @@ class DataPull:
             print(f"Error al realizar la solicitud: {e}")
             return None
 
-        file_path = f"data/raw/{year}_spending.zip"
+        file_path = f"{self.data_dir}/{year}_spending.zip"
+        print(url)
         self.pull_file(url, file_path)
 
     def extract_awards_by_year(self, year: int):
         extracted = False
-        data_directory = "data/raw/"
-        local_zip_path = os.path.join(data_directory, f"{year}_spending.zip")
+        local_zip_path = os.path.join(self.data_dir, f"{year}_spending.zip")
 
         with zipfile.ZipFile(local_zip_path, "r") as zip_ref:
-            zip_ref.extractall(data_directory)
+            zip_ref.extractall(self.data_dir)
             print("Archivo extraído correctamente.")
+            logging.info("successfuly extracted files")
             extracted = True
 
-        extracted_files = [f for f in os.listdir(data_directory) if f.endswith(".csv")]
+        extracted_files = [f for f in os.listdir(self.data_dir) if f.endswith(".csv")]
 
         if extracted:
             latest_file = max(
                 extracted_files,
-                key=lambda f: os.path.getmtime(os.path.join(data_directory, f)),
+                key=lambda f: os.path.getmtime(os.path.join(self.data_dir, f)),
             )
 
             new_name = f"{year}_spending.csv"
 
-            old_path = os.path.join(data_directory, latest_file)
-            new_path = os.path.join(data_directory, new_name)
+            old_path = os.path.join(self.data_dir, latest_file)
+            new_path = os.path.join(self.data_dir, new_name)
 
             os.rename(old_path, new_path)
         else:
             print("No se encontraron archivos extraídos.")
+            logging.error("Could not find files form extracted ")
 
         return None
 
@@ -142,7 +146,6 @@ class DataPull:
 
         selected_columns = list(column_mapping.values())
         df = df[selected_columns]
-        df = df.sort_values(by="Obligations", ascending=False)
 
         print(df)
 
@@ -202,21 +205,11 @@ class DataPull:
                 ):
                     if chunk:  # Filter out keep-alive new chunks
                         file.write(chunk)
-            self.debug_log(f"Downloaded file to {file_path}", "SUCCESS")
+            logging.info(f"Downloaded file to {file_path}")
         else:
-            self.debug_log(f"Failed to download file: {response.status_code}", "ERROR")
+            logging.error(f"Failed to download file: {response.status_code}")
 
     def pull_activity(self, file_path: str):
         url = "https://www.bde.pr.gov/BDE/PREDDOCS/I_EAI.XLS"
         self.pull_file(url, file_path)
-        self.debug_log(f"Downloaded file to {file_path}", "SUCCESS")
-
-    def debug_log(self, message: str, level: str) -> None:
-        if self.debug:
-            match level:
-                case "ERROR":
-                    print(f"\033[0;31mERROR: \033[0m {message}")
-                case "SUCCESS":
-                    print(f"\033[0;32mSUCCESS: \033[0m {message}")
-                case "INFO":
-                    print(f"\033[0;36mINFO: \033[0m {message}")
+        logging.info(f"Downloaded file to {file_path}")
