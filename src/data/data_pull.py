@@ -3,6 +3,8 @@ from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import requests
 import os
+import zipfile
+import pandas as pd
 
 
 class DataPull:
@@ -31,6 +33,105 @@ class DataPull:
     def pull_economic_indicators(self, file_path: str):
         url = "https://jp.pr.gov/wp-content/uploads/2024/09/Indicadores_Economicos_9.13.2024.xlsx"
         self.pull_file(url, file_path)
+
+    def pull_awards_by_year(self, year: int):
+        base_url = "https://api.usaspending.gov/api/v2/bulk_download/awards/"
+        headers = {"Content-Type": "application/json"}
+        
+        payload = {
+                "subawards": False,
+                "filters": {
+                    "prime_award_types": ["A", "B", "C", "D"],
+                    "date_type": "action_date",
+                    "date_range": {
+                        "start_date": f"{year}-10-01",
+                        "end_date": f"{year + 1}-09-30",
+                    },
+                    "place_of_performance_locations": [{"country": "USA", "state": "PR"}]
+                },
+                "file_format": "csv"
+            }
+        try:
+            response = requests.post(
+                base_url, json=payload, headers=headers, timeout=None
+            )
+            if response.status_code == 200:
+                response_json = response.json()
+                url = response_json.get("file_url")
+            else:
+                print(f"Error en la solicitud: {response.status_code}, {response.text}")
+                return None
+            
+        except Exception as e:
+            print(f"Error al realizar la solicitud: {e}")
+            return None
+
+        file_path = f"data/raw/{year}_spending.zip"
+        self.pull_file(url, file_path)
+
+    def extract_awards_by_year(self, year: int):
+        extracted = False
+        data_directory = "data/raw/"
+        local_zip_path = os.path.join(data_directory, f"{year}_spending.zip")
+            
+        with zipfile.ZipFile(local_zip_path, "r") as zip_ref:
+            zip_ref.extractall(data_directory)
+            print("Archivo extraído correctamente.")
+            extracted = True
+
+        extracted_files = [f for f in os.listdir(data_directory) if f.endswith('.csv')]
+
+        if extracted:
+            latest_file = max(extracted_files, key=lambda f: os.path.getmtime(os.path.join(data_directory, f)))
+
+            new_name = f"{year}_spending.csv"
+
+            old_path = os.path.join(data_directory, latest_file)
+            new_path = os.path.join(data_directory, new_name)
+
+            os.rename(old_path, new_path)
+        else:
+            print("No se encontraron archivos extraídos.")
+
+        return None
+    
+    def clean_awards_by_year(self, year: int):
+        data_directory = f'data/raw/{year}_spending.csv'
+
+        df = pd.read_csv(data_directory)
+
+        date_format="%Y-%m-%d"
+        for col in df.columns:
+            if 'date' in col.lower():
+                df[col] = pd.to_datetime(df[col], errors='coerce', format=date_format)
+                df[col] = df[col].dt.strftime(date_format)
+
+        column_mapping = {
+            'award_id_piid': 'Prime Award ID',
+            'recipient_name': 'Recipient Name',
+            'total_dollars_obligated': 'Obligations',
+            'award_type': 'Award Type',
+            'prime_award_base_transaction_description': 'Award Description',
+            'total_outlayed_amount_for_overall_award': 'Outlays',
+            'disaster_emergency_fund_codes_for_overall_award': 'Disaster Emergency Fund Codes (DEFCs)',
+            'obligated_amount_from_COVID-19_supplementals_for_overall_award': 'COVID-19 Obligations',
+            'outlayed_amount_from_COVID-19_supplementals_for_overall_award': 'COVID-19 Outlays',
+            'outlayed_amount_from_IIJA_supplemental_for_overall_award': 'Infrastructure Obligations',
+            'obligated_amount_from_IIJA_supplemental_for_overall_award': 'Infrastructure Outlays',
+            'awarding_agency_name': 'Awarding Agency',
+            'awarding_sub_agency_name': 'Awarding Subagency',
+            'period_of_performance_start_date': 'Period of Performance Start',
+            'period_of_performance_current_end_date': 'Period of Performance End'
+        }
+
+        df.rename(columns=column_mapping, inplace=True)
+
+        selected_columns = list(column_mapping.values())
+        df = df[selected_columns]
+        df = df.sort_values(by='Obligations', ascending=False)
+
+        print(df)
+
 
     def pull_consumer(self, file_path: str):
         session = requests.Session()
