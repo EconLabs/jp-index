@@ -52,18 +52,35 @@ class DataPull:
         headers = {"Content-Type": "application/json"}
 
         payload = {
-            "subawards": False,
-            "filters": {
-                "prime_award_types": ["A", "B", "C", "D"],
-                "date_type": "action_date",
-                "date_range": {
-                    "start_date": f"{year}-10-01",
-                    "end_date": f"{year + 1}-09-30",
+                "subawards": False,
+                "filters": {
+                    "prime_award_types": ["A", "B", "C", "D"],
+                    "date_type": "action_date",
+                    "date_range": {
+                        "start_date": f"{year}-10-01",
+                        "end_date": f"{year + 1}-09-30",
+                    },
+                    "place_of_performance_locations": [{"country": "USA", "state": "PR"}]
                 },
-                "place_of_performance_locations": [{"country": "USA", "state": "PR"}],
-            },
-            "file_format": "csv",
-        }
+                "columns": [
+                    'award_id_piid',
+                    'recipient_name',
+                    'total_dollars_obligated',
+                    'award_type',
+                    'prime_award_base_transaction_description',
+                    'total_outlayed_amount_for_overall_award',
+                    'disaster_emergency_fund_codes_for_overall_award',
+                    'obligated_amount_from_COVID-19_supplementals_for_overall_award',
+                    'outlayed_amount_from_COVID-19_supplementals_for_overall_award',
+                    'outlayed_amount_from_IIJA_supplemental_for_overall_award',
+                    'obligated_amount_from_IIJA_supplemental_for_overall_award',
+                    'awarding_agency_name',
+                    'awarding_sub_agency_name',
+                    'period_of_performance_start_date',
+                    'period_of_performance_current_end_date'
+                ],
+                "file_format": "csv"
+            }
         try:
             response = requests.post(
                 base_url, json=payload, headers=headers, timeout=None
@@ -118,12 +135,6 @@ class DataPull:
 
         df = pd.read_csv(data_directory)
 
-        date_format = "%Y-%m-%d"
-        for col in df.columns:
-            if "date" in col.lower():
-                df[col] = pd.to_datetime(df[col], errors="coerce", format=date_format)
-                df[col] = df[col].dt.strftime(date_format)
-
         column_mapping = {
             "award_id_piid": "Prime Award ID",
             "recipient_name": "Recipient Name",
@@ -144,10 +155,42 @@ class DataPull:
 
         df.rename(columns=column_mapping, inplace=True)
 
-        selected_columns = list(column_mapping.values())
-        df = df[selected_columns]
+        #selected_columns = list(column_mapping.values())
+        #df = df[selected_columns]
+        df = df.sort_values(by='Obligations', ascending=False)
 
-        print(df)
+        numeric_columns = [
+            'Obligations', 
+            'Outlays', 
+            'COVID-19 Obligations', 
+            'COVID-19 Outlays',
+            'Infrastructure Obligations', 
+            'Infrastructure Outlays'
+        ]
+        df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors='coerce')
+
+        categorical_columns = [
+            'Prime Award ID', 
+            'Recipient Name', 
+            'Award Type', 
+            'Award Description', 
+            'Disaster Emergency Fund Codes (DEFCs)', 
+            'Awarding Agency', 
+            'Awarding Subagency'
+        ]
+        df[categorical_columns] = df[categorical_columns].astype(str)
+
+        date_coulumns = [
+            "Period of Performance Start",
+            "Period of Performance End"
+        ]
+        df[date_coulumns] = df[date_coulumns].astype('datetime64[ns]')
+
+        date_format = "%Y-%m-%d"
+        for col in df.columns:
+            if "date" in col.lower():
+                df[col] = pd.to_datetime(df[col], errors="coerce", format=date_format)
+                df[col] = df[col].dt.strftime(date_format)
 
     def pull_consumer(self, file_path: str):
         session = requests.Session()
