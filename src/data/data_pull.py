@@ -5,7 +5,8 @@ import requests
 import os
 import logging
 import zipfile
-import pandas as pd
+import polars as pl
+import time
 
 
 class DataPull:
@@ -47,62 +48,92 @@ class DataPull:
         url = "https://jp.pr.gov/wp-content/uploads/2024/09/Indicadores_Economicos_9.13.2024.xlsx"
         self.pull_file(url, file_path)
 
-    def pull_awards_by_year(self, year: int):
-        base_url = "https://api.usaspending.gov/api/v2/bulk_download/awards/"
+    def clean_awards_by_year(self, data: list, page: int):
+        empty_df = [
+            pl.Series('internal_id', [], dtype=pl.String),
+            pl.Series('Award ID', [], dtype=pl.String),
+            pl.Series('Recipient Name', [], dtype=pl.String),
+            pl.Series('Start Date', [], dtype=pl.Datetime),
+            pl.Series('End Date', [], dtype=pl.Datetime),
+            pl.Series('Award Amount', [], dtype=pl.Int64),
+            pl.Series('Awarding Agency', [], dtype=pl.String),
+            pl.Series('Awarding Sub Agency', [], dtype=pl.String),
+            pl.Series('Funding Agency', [], dtype=pl.String),
+            pl.Series('Funding Sub Agency', [], dtype=pl.String),
+            pl.Series('Award Type', [], dtype=pl.String),
+            pl.Series('awarding_agency_id', [], dtype=pl.String),
+            pl.Series('agency_slug', [], dtype=pl.String),
+            pl.Series('generated_internal_id', [], dtype=pl.String)
+        ]
+        df = pl.DataFrame(data)
+        logging.info(f"Columns: {df.columns}")
+
+    def pull_awards_by_year(self, year_start: int, year_end: int):
+        base_url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
         headers = {"Content-Type": "application/json"}
 
         payload = {
                 "subawards": False,
+                "limit": 100,
+                "page": 1,
                 "filters": {
-                    "prime_award_types": ["A", "B", "C", "D"],
-                    "date_type": "action_date",
-                    "date_range": {
-                        "start_date": f"{year}-10-01",
-                        "end_date": f"{year + 1}-09-30",
-                    },
+                    "award_type_codes": ["A", "B", "C", "D"],
+                    "time_period": [
+                        {
+                            "start_date": f"{year_start}-10-01",
+                            "end_date": f"{year_end}-09-30",
+                        }
+                    ],
                     "place_of_performance_locations": [{"country": "USA", "state": "PR"}]
                 },
-                "columns": [
-                    'award_id_piid',
-                    'recipient_name',
-                    'total_dollars_obligated',
-                    'award_type',
-                    'prime_award_base_transaction_description',
-                    'total_outlayed_amount_for_overall_award',
-                    'disaster_emergency_fund_codes_for_overall_award',
-                    'obligated_amount_from_COVID-19_supplementals_for_overall_award',
-                    'outlayed_amount_from_COVID-19_supplementals_for_overall_award',
-                    'outlayed_amount_from_IIJA_supplemental_for_overall_award',
-                    'obligated_amount_from_IIJA_supplemental_for_overall_award',
-                    'awarding_agency_name',
-                    'awarding_sub_agency_name',
-                    'period_of_performance_start_date',
-                    'period_of_performance_current_end_date'
-                ],
-                "file_format": "csv"
+                "fields": [
+                    "Award ID",
+                    "Recipient Name",
+                    "Start Date",
+                    "End Date",
+                    "Award Amount",
+                    "Awarding Agency",
+                    "Awarding Sub Agency",
+                    "Funding Agency",
+                    "Funding Sub Agency",
+                    "Award Type",
+                ]
             }
+        
+        retries = 5
+
         try:
-            response = requests.post(
-                base_url, json=payload, headers=headers, timeout=None
-            )
-            if response.status_code == 200:
-                response_json = response.json()
-                url = response_json.get("file_url")
-            else:
-                print(f"Error en la solicitud: {response.status_code}, {response.text}")
-                return None
+            while True:
+                for attempt in range(retries):
+                    try:
+                        logging.info(f"Downloading page: {payload["page"]}")
+                        response = requests.post(
+                            base_url, json=payload, headers=headers, timeout=None
+                        )
+               
+                        if response.status_code == 200:
+                            response_json = response.json()
+                            data = response_json.get("results", [])
+                            if not data:
+                                return None
+                            logging.info(f"Downloaded page: {payload["page"]}.")
+                            self.clean_awards_by_year(data, payload["page"])
+                            #payload["page"] = payload["page"] + 1
+
+                        else:
+                            logging.error(f"Error en la solicitud: {response.status_code}, {response.text}")
+        
+                    except requests.exceptions.RequestException as error:
+                        wait_time = 2**attempt
+                        logging.error(f"Error: {error}. Retrying in {wait_time} seconds...")
+                        time.sleep(wait_time)
 
         except Exception as e:
-            print(f"Error al realizar la solicitud: {e}")
-            return None
-
-        file_path = f"{self.data_dir}/{year}_spending.zip"
-        print(url)
-        self.pull_file(url, file_path)
+            logging.error(f"Error al realizar la solicitud: {e}")
 
     def extract_awards_by_year(self, year: int):
         extracted = False
-        local_zip_path = os.path.join(self.data_dir, f"{year}_spending.zip")
+        local_zip_path = os.path.join(self.data_dir, f"/raw/{year}_spending.zip")
 
         with zipfile.ZipFile(local_zip_path, "r") as zip_ref:
             zip_ref.extractall(self.data_dir)
@@ -129,68 +160,6 @@ class DataPull:
             logging.error("Could not find files form extracted ")
 
         return None
-
-    def clean_awards_by_year(self, year: int):
-        data_directory = f"data/raw/{year}_spending.csv"
-
-        df = pd.read_csv(data_directory)
-
-        column_mapping = {
-            "award_id_piid": "Prime Award ID",
-            "recipient_name": "Recipient Name",
-            "total_dollars_obligated": "Obligations",
-            "award_type": "Award Type",
-            "prime_award_base_transaction_description": "Award Description",
-            "total_outlayed_amount_for_overall_award": "Outlays",
-            "disaster_emergency_fund_codes_for_overall_award": "Disaster Emergency Fund Codes (DEFCs)",
-            "obligated_amount_from_COVID-19_supplementals_for_overall_award": "COVID-19 Obligations",
-            "outlayed_amount_from_COVID-19_supplementals_for_overall_award": "COVID-19 Outlays",
-            "outlayed_amount_from_IIJA_supplemental_for_overall_award": "Infrastructure Obligations",
-            "obligated_amount_from_IIJA_supplemental_for_overall_award": "Infrastructure Outlays",
-            "awarding_agency_name": "Awarding Agency",
-            "awarding_sub_agency_name": "Awarding Subagency",
-            "period_of_performance_start_date": "Period of Performance Start",
-            "period_of_performance_current_end_date": "Period of Performance End",
-        }
-
-        df.rename(columns=column_mapping, inplace=True)
-
-        #selected_columns = list(column_mapping.values())
-        #df = df[selected_columns]
-        df = df.sort_values(by='Obligations', ascending=False)
-
-        numeric_columns = [
-            'Obligations', 
-            'Outlays', 
-            'COVID-19 Obligations', 
-            'COVID-19 Outlays',
-            'Infrastructure Obligations', 
-            'Infrastructure Outlays'
-        ]
-        df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors='coerce')
-
-        categorical_columns = [
-            'Prime Award ID', 
-            'Recipient Name', 
-            'Award Type', 
-            'Award Description', 
-            'Disaster Emergency Fund Codes (DEFCs)', 
-            'Awarding Agency', 
-            'Awarding Subagency'
-        ]
-        df[categorical_columns] = df[categorical_columns].astype(str)
-
-        date_coulumns = [
-            "Period of Performance Start",
-            "Period of Performance End"
-        ]
-        df[date_coulumns] = df[date_coulumns].astype('datetime64[ns]')
-
-        date_format = "%Y-%m-%d"
-        for col in df.columns:
-            if "date" in col.lower():
-                df[col] = pd.to_datetime(df[col], errors="coerce", format=date_format)
-                df[col] = df[col].dt.strftime(date_format)
 
     def pull_consumer(self, file_path: str):
         session = requests.Session()
