@@ -9,6 +9,8 @@ import polars.selectors as cs
 import polars as pl
 import ibis
 import os
+from .models import init_award_data_table
+import logging
 
 
 class DataIndex(DataPull):
@@ -39,6 +41,7 @@ class DataIndex(DataPull):
         -------
         DataProcess
         """
+        data_dir = 'data/'
         self.debug = debug
         super().__init__(debug)
         self.database_url = database_url
@@ -72,6 +75,35 @@ class DataIndex(DataPull):
                 port=self.database_url.split("://")[1].split(":")[2].split("/")[0],
                 database=self.database_url.split("://")[1].split(":")[2].split("/")[1],
             )
+
+    def process_awards(self, update: bool = False) -> it.Table:
+        if (
+            "AwardTable" not in self.conn.list_tables()
+            or self.conn.table("AwardTable").count().execute() == 0
+            or update
+        ): 
+            data_file = self.database_url.split("///")[1]
+            init_award_data_table(data_file)
+
+        start_year = 2007
+        end_year = 2025
+        page = 1
+
+        while True:
+            try:
+                result = self.conn.sql(f"SELECT COUNT(*) FROM AwardTable WHERE page = {page}").execute()
+                if not result.iloc[0, 0]:
+                    df = DataPull.pull_awards_by_year(self, start_year, end_year, page)
+                    if df.is_empty():
+                        return self.conn.table("AwardTable")
+                    self.conn.insert("AwardTable", df)    
+                    logging.info(f"Inserted page {page} to sqlite table.")
+                else:
+                    logging.info(f"Page {page} already in db.")
+                page += 1
+            except Exception as e:
+                logging.error(f"Error inserting page {page} to sqlite table. {e}")
+                return self.conn.table("AwardTable")
 
     def process_consumer(self, update: bool = False) -> ibis.expr.types.relations.Table:
         """

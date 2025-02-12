@@ -50,32 +50,70 @@ class DataPull:
 
     def clean_awards_by_year(self, data: list, page: int):
         empty_df = [
-            pl.Series('internal_id', [], dtype=pl.String),
+            pl.Series('internal_id', [], dtype=pl.Int64),
             pl.Series('Award ID', [], dtype=pl.String),
             pl.Series('Recipient Name', [], dtype=pl.String),
-            pl.Series('Start Date', [], dtype=pl.Datetime),
-            pl.Series('End Date', [], dtype=pl.Datetime),
-            pl.Series('Award Amount', [], dtype=pl.Int64),
+            pl.Series('Start Date', [], dtype=pl.Date),
+            pl.Series('End Date', [], dtype=pl.Date),
+            pl.Series('Award Amount', [], dtype=pl.Float64),
             pl.Series('Awarding Agency', [], dtype=pl.String),
             pl.Series('Awarding Sub Agency', [], dtype=pl.String),
             pl.Series('Funding Agency', [], dtype=pl.String),
             pl.Series('Funding Sub Agency', [], dtype=pl.String),
             pl.Series('Award Type', [], dtype=pl.String),
-            pl.Series('awarding_agency_id', [], dtype=pl.String),
+            pl.Series('awarding_agency_id', [], dtype=pl.Int64),
             pl.Series('agency_slug', [], dtype=pl.String),
-            pl.Series('generated_internal_id', [], dtype=pl.String)
+            pl.Series('generated_internal_id', [], dtype=pl.String),
+            pl.Series('page', [], dtype=pl.Int64)
         ]
+        acs = pl.DataFrame(empty_df).clear()
         df = pl.DataFrame(data)
-        logging.info(f"Columns: {df.columns}")
+        df = df.with_columns(pl.lit(page).alias("page").cast(pl.Int64))
+        df = df.with_columns(
+            [
+                pl.col("Start Date").str.strptime(pl.Date, format="%Y-%m-%d"),
+                pl.col("End Date").str.strptime(pl.Date, format="%Y-%m-%d")
+            ]
+        )
 
-    def pull_awards_by_year(self, year_start: int, year_end: int):
+        acs = pl.concat([acs, df], how="vertical")
+        logging.info(f"Cleaned data for page {page} data.")
+
+        column_mapping = {
+            "internal_id": "internal_id",
+            "Award ID": "award_id",
+            "Recipient Name": "recipient_name",
+            "Start Date": "start_date",
+            "End Date": "end_date",
+            "Award Amount": "award_amount",
+            "Awarding Agency": "awarding_agency",
+            "Awarding Sub Agency": "awarding_subagency",
+            "Funding Agency": "funding_agency",
+            "Funding Sub Agency": "funding_subagency",
+            "Award Type": "award_type",
+            "awarding_agency_id": "awarding_agency_id",
+            "agency_slug": "agency_slug",
+            "generated_internal_id": "generated_internal_id",
+        }
+
+        acs = acs.rename(column_mapping)
+
+        acs = acs.with_columns([
+            pl.col("start_date").cast(pl.Utf8).fill_null(pl.lit(None)),
+            pl.col("end_date").cast(pl.Utf8).fill_null(pl.lit(None)),
+        ])
+
+        return acs
+        
+
+    def pull_awards_by_year(self, year_start: int, year_end: int, page: int):
         base_url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
         headers = {"Content-Type": "application/json"}
 
         payload = {
                 "subawards": False,
                 "limit": 100,
-                "page": 1,
+                "page": page,
                 "filters": {
                     "award_type_codes": ["A", "B", "C", "D"],
                     "time_period": [
@@ -103,63 +141,31 @@ class DataPull:
         retries = 5
 
         try:
-            while True:
-                for attempt in range(retries):
-                    try:
-                        logging.info(f"Downloading page: {payload["page"]}")
-                        response = requests.post(
-                            base_url, json=payload, headers=headers, timeout=None
-                        )
-               
-                        if response.status_code == 200:
-                            response_json = response.json()
-                            data = response_json.get("results", [])
-                            if not data:
-                                return None
-                            logging.info(f"Downloaded page: {payload["page"]}.")
-                            self.clean_awards_by_year(data, payload["page"])
-                            #payload["page"] = payload["page"] + 1
-
-                        else:
-                            logging.error(f"Error en la solicitud: {response.status_code}, {response.text}")
+            for attempt in range(retries):
+                try:
+                    logging.info(f"Downloading page: {payload["page"]}")
+                    response = requests.post(
+                        base_url, json=payload, headers=headers, timeout=None
+                    )
         
-                    except requests.exceptions.RequestException as error:
-                        wait_time = 2**attempt
-                        logging.error(f"Error: {error}. Retrying in {wait_time} seconds...")
-                        time.sleep(wait_time)
+                    if response.status_code == 200:
+                        response_json = response.json()
+                        data = response_json.get("results", [])
+                        if not data:
+                            return None
+                        logging.info(f"Downloaded page: {page}.")
+                        df = self.clean_awards_by_year(data, page)
+                        return df
+
+                    else:
+                        logging.error(f"Error en la solicitud: {response.status_code}")
+                except requests.exceptions.RequestException as error:
+                    wait_time = 2**attempt
+                    logging.error(f"Error: {error}. Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
 
         except Exception as e:
             logging.error(f"Error al realizar la solicitud: {e}")
-
-    def extract_awards_by_year(self, year: int):
-        extracted = False
-        local_zip_path = os.path.join(self.data_dir, f"/raw/{year}_spending.zip")
-
-        with zipfile.ZipFile(local_zip_path, "r") as zip_ref:
-            zip_ref.extractall(self.data_dir)
-            print("Archivo extraído correctamente.")
-            logging.info("successfuly extracted files")
-            extracted = True
-
-        extracted_files = [f for f in os.listdir(self.data_dir) if f.endswith(".csv")]
-
-        if extracted:
-            latest_file = max(
-                extracted_files,
-                key=lambda f: os.path.getmtime(os.path.join(self.data_dir, f)),
-            )
-
-            new_name = f"{year}_spending.csv"
-
-            old_path = os.path.join(self.data_dir, latest_file)
-            new_path = os.path.join(self.data_dir, new_name)
-
-            os.rename(old_path, new_path)
-        else:
-            print("No se encontraron archivos extraídos.")
-            logging.error("Could not find files form extracted ")
-
-        return None
 
     def pull_consumer(self, file_path: str):
         session = requests.Session()
