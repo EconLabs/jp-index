@@ -86,7 +86,7 @@ class DataPull:
         df = pl.DataFrame(data)
         df = df.with_columns(
             pl.lit(page).alias("page").cast(pl.Int64),
-            pl.lit(fiscal_year).alias("fiscal_year").cast(pl.Int64)
+            pl.lit(fiscal_year).alias("fiscal_year").cast(pl.Int64),
         )
         df = df.with_columns(
             [
@@ -124,7 +124,7 @@ class DataPull:
             ]
         )
 
-        return acs        
+        return acs
 
     def pull_awards_by_year(self, year_start: int, year_end: int, page: int):
         base_url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
@@ -173,12 +173,16 @@ class DataPull:
                         data = response_json.get("results", [])
                         if not data:
                             return None
-                        logging.info(f"Downloaded page: {page} for fiscal year: {fiscal_year}.")
+                        logging.info(
+                            f"Downloaded page: {page} for fiscal year: {fiscal_year}."
+                        )
                         df = self.clean_awards_by_year(data, page, fiscal_year)
                         return df
 
                     else:
-                        logging.error(f"Error en la solicitud: {response.status_code}, {response.reason}")
+                        logging.error(
+                            f"Error en la solicitud: {response.status_code}, {response.reason}"
+                        )
                 except requests.exceptions.RequestException as error:
                     wait_time = 2**attempt
                     logging.error(f"Error: {error}. Retrying in {wait_time} seconds...")
