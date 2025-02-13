@@ -4,20 +4,36 @@ from requests.adapters import HTTPAdapter
 import requests
 import os
 import logging
+import ibis
 import zipfile
 import polars as pl
 import time
 
 
 class DataPull:
-    def __init__(self, data_dir: str = "data"):
-        self.data_dir = data_dir
+    def __init__(
+        self,
+        saving_dir: str = "data/",
+        database_url: str = "duckdb:///data.ddb",
+    ):
+        self.database_url = database_url
+        self.saving_dir = saving_dir
+        self.data_file = self.database_url.split("///")[1]
+        self.conn = ibis.duckdb.connect(f"{self.data_file}")
+
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(levelname)s - %(message)s",
             datefmt="%d-%b-%y %H:%M:%S",
             filename="data_process.log",
         )
+        # Check if the saving directory exists
+        if not os.path.exists(self.saving_dir + "raw"):
+            os.makedirs(self.saving_dir + "raw")
+        if not os.path.exists(self.saving_dir + "processed"):
+            os.makedirs(self.saving_dir + "processed")
+        if not os.path.exists(self.saving_dir + "external"):
+            os.makedirs(self.saving_dir + "external")
 
     def pull_file(self, url: str, filename: str, verify: bool = True) -> None:
         if os.path.exists(filename):
@@ -50,22 +66,21 @@ class DataPull:
 
     def clean_awards_by_year(self, data: list, page: int, fiscal_year: int):
         empty_df = [
-            pl.Series('internal_id', [], dtype=pl.Int64),
-            pl.Series('Award ID', [], dtype=pl.String),
-            pl.Series('Recipient Name', [], dtype=pl.String),
-            pl.Series('Start Date', [], dtype=pl.Date),
-            pl.Series('End Date', [], dtype=pl.Date),
-            pl.Series('Award Amount', [], dtype=pl.Float64),
-            pl.Series('Awarding Agency', [], dtype=pl.String),
-            pl.Series('Awarding Sub Agency', [], dtype=pl.String),
-            pl.Series('Funding Agency', [], dtype=pl.String),
-            pl.Series('Funding Sub Agency', [], dtype=pl.String),
-            pl.Series('Award Type', [], dtype=pl.String),
-            pl.Series('awarding_agency_id', [], dtype=pl.Int64),
-            pl.Series('agency_slug', [], dtype=pl.String),
-            pl.Series('generated_internal_id', [], dtype=pl.String),
-            pl.Series('page', [], dtype=pl.Int64),
-            pl.Series('fiscal_year', [], dtype=pl.Int64)
+            pl.Series("internal_id", [], dtype=pl.Int64),
+            pl.Series("Award ID", [], dtype=pl.String),
+            pl.Series("Recipient Name", [], dtype=pl.String),
+            pl.Series("Start Date", [], dtype=pl.Date),
+            pl.Series("End Date", [], dtype=pl.Date),
+            pl.Series("Award Amount", [], dtype=pl.Float64),
+            pl.Series("Awarding Agency", [], dtype=pl.String),
+            pl.Series("Awarding Sub Agency", [], dtype=pl.String),
+            pl.Series("Funding Agency", [], dtype=pl.String),
+            pl.Series("Funding Sub Agency", [], dtype=pl.String),
+            pl.Series("Award Type", [], dtype=pl.String),
+            pl.Series("awarding_agency_id", [], dtype=pl.Int64),
+            pl.Series("agency_slug", [], dtype=pl.String),
+            pl.Series("generated_internal_id", [], dtype=pl.String),
+            pl.Series("page", [], dtype=pl.Int64),
         ]
         acs = pl.DataFrame(empty_df).clear()
         df = pl.DataFrame(data)
@@ -76,7 +91,7 @@ class DataPull:
         df = df.with_columns(
             [
                 pl.col("Start Date").str.strptime(pl.Date, format="%Y-%m-%d"),
-                pl.col("End Date").str.strptime(pl.Date, format="%Y-%m-%d")
+                pl.col("End Date").str.strptime(pl.Date, format="%Y-%m-%d"),
             ]
         )
 
@@ -102,52 +117,53 @@ class DataPull:
 
         acs = acs.rename(column_mapping)
 
-        acs = acs.with_columns([
-            pl.col("start_date").cast(pl.Utf8).fill_null(pl.lit(None)),
-            pl.col("end_date").cast(pl.Utf8).fill_null(pl.lit(None)),
-        ])
+        acs = acs.with_columns(
+            [
+                pl.col("start_date").cast(pl.Utf8).fill_null(pl.lit(None)),
+                pl.col("end_date").cast(pl.Utf8).fill_null(pl.lit(None)),
+            ]
+        )
 
-        return acs
-        
+        return acs        
 
-    def pull_awards_by_year(self, fiscal_year: int, page: int):
+    def pull_awards_by_year(self, year_start: int, year_end: int, page: int):
         base_url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
         headers = {"Content-Type": "application/json"}
 
         payload = {
-                "subawards": False,
-                "limit": 100,
-                "page": page,
-                "filters": {
-                    "award_type_codes": ["A", "B", "C", "D"],
-                    "time_period": [
-                        {
-                            "start_date": f"{fiscal_year - 1}-10-01",
-                            "end_date": f"{fiscal_year}-09-30",
-                        }
-                    ],
-                    "place_of_performance_locations": [{"country": "USA", "state": "PR"}]
-                },
-                "fields": [
-                    "Award ID",
-                    "Recipient Name",
-                    "Start Date",
-                    "End Date",
-                    "Award Amount",
-                    "Awarding Agency",
-                    "Awarding Sub Agency",
-                    "Funding Agency",
-                    "Funding Sub Agency",
-                    "Award Type",
-                ]
-            }
-        
+            "subawards": False,
+            "limit": 100,
+            "page": page,
+            "filters": {
+                "award_type_codes": ["A", "B", "C", "D"],
+                "time_period": [
+                    {
+                        "start_date": f"{year_start}-10-01",
+                        "end_date": f"{year_end}-09-30",
+                    }
+                ],
+                "place_of_performance_locations": [{"country": "USA", "state": "PR"}],
+            },
+            "fields": [
+                "Award ID",
+                "Recipient Name",
+                "Start Date",
+                "End Date",
+                "Award Amount",
+                "Awarding Agency",
+                "Awarding Sub Agency",
+                "Funding Agency",
+                "Funding Sub Agency",
+                "Award Type",
+            ],
+        }
+
         retries = 5
 
         try:
             for attempt in range(retries):
                 try:
-                    logging.info(f"Downloading page: {page} for fiscal year {fiscal_year}.")
+                    logging.info(f"Downloading page: {payload['page']}")
                     response = requests.post(
                         base_url, json=payload, headers=headers, timeout=None
                     )
