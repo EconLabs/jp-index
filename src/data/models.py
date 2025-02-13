@@ -25,7 +25,8 @@ def init_award_data_table(db_path: str) -> None:
             awarding_agency_id INTEGER,
             agency_slug TEXT,
             generated_internal_id TEXT,
-            page INTEGER
+            page INTEGER,
+            fiscal_year INTEGER
         )
         """
     )

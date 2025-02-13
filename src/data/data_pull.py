@@ -48,7 +48,7 @@ class DataPull:
         url = "https://jp.pr.gov/wp-content/uploads/2024/09/Indicadores_Economicos_9.13.2024.xlsx"
         self.pull_file(url, file_path)
 
-    def clean_awards_by_year(self, data: list, page: int):
+    def clean_awards_by_year(self, data: list, page: int, fiscal_year: int):
         empty_df = [
             pl.Series('internal_id', [], dtype=pl.Int64),
             pl.Series('Award ID', [], dtype=pl.String),
@@ -64,11 +64,15 @@ class DataPull:
             pl.Series('awarding_agency_id', [], dtype=pl.Int64),
             pl.Series('agency_slug', [], dtype=pl.String),
             pl.Series('generated_internal_id', [], dtype=pl.String),
-            pl.Series('page', [], dtype=pl.Int64)
+            pl.Series('page', [], dtype=pl.Int64),
+            pl.Series('fiscal_year', [], dtype=pl.Int64)
         ]
         acs = pl.DataFrame(empty_df).clear()
         df = pl.DataFrame(data)
-        df = df.with_columns(pl.lit(page).alias("page").cast(pl.Int64))
+        df = df.with_columns(
+            pl.lit(page).alias("page").cast(pl.Int64),
+            pl.lit(fiscal_year).alias("fiscal_year").cast(pl.Int64)
+        )
         df = df.with_columns(
             [
                 pl.col("Start Date").str.strptime(pl.Date, format="%Y-%m-%d"),
@@ -77,7 +81,7 @@ class DataPull:
         )
 
         acs = pl.concat([acs, df], how="vertical")
-        logging.info(f"Cleaned data for page {page} data.")
+        logging.info(f"Cleaned data for page {page} fiscal year {fiscal_year}.")
 
         column_mapping = {
             "internal_id": "internal_id",
@@ -106,7 +110,7 @@ class DataPull:
         return acs
         
 
-    def pull_awards_by_year(self, year_start: int, year_end: int, page: int):
+    def pull_awards_by_year(self, fiscal_year: int, page: int):
         base_url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
         headers = {"Content-Type": "application/json"}
 
@@ -118,8 +122,8 @@ class DataPull:
                     "award_type_codes": ["A", "B", "C", "D"],
                     "time_period": [
                         {
-                            "start_date": f"{year_start}-10-01",
-                            "end_date": f"{year_end}-09-30",
+                            "start_date": f"{fiscal_year - 1}-10-01",
+                            "end_date": f"{fiscal_year}-09-30",
                         }
                     ],
                     "place_of_performance_locations": [{"country": "USA", "state": "PR"}]
@@ -143,22 +147,22 @@ class DataPull:
         try:
             for attempt in range(retries):
                 try:
-                    logging.info(f"Downloading page: {payload["page"]}")
+                    logging.info(f"Downloading page: {page} for fiscal year {fiscal_year}.")
                     response = requests.post(
                         base_url, json=payload, headers=headers, timeout=None
                     )
-        
+
                     if response.status_code == 200:
                         response_json = response.json()
                         data = response_json.get("results", [])
                         if not data:
                             return None
-                        logging.info(f"Downloaded page: {page}.")
-                        df = self.clean_awards_by_year(data, page)
+                        logging.info(f"Downloaded page: {page} for fiscal year: {fiscal_year}.")
+                        df = self.clean_awards_by_year(data, page, fiscal_year)
                         return df
 
                     else:
-                        logging.error(f"Error en la solicitud: {response.status_code}")
+                        logging.error(f"Error en la solicitud: {response.status_code}, {response.reason}")
                 except requests.exceptions.RequestException as error:
                     wait_time = 2**attempt
                     logging.error(f"Error: {error}. Retrying in {wait_time} seconds...")

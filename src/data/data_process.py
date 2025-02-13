@@ -76,7 +76,7 @@ class DataIndex(DataPull):
                 database=self.database_url.split("://")[1].split(":")[2].split("/")[1],
             )
 
-    def process_awards(self, update: bool = False) -> it.Table:
+    def process_awards(self, fiscal_year: int, update: bool = False) -> it.Table:
         if (
             "AwardTable" not in self.conn.list_tables()
             or self.conn.table("AwardTable").count().execute() == 0
@@ -85,24 +85,23 @@ class DataIndex(DataPull):
             data_file = self.database_url.split("///")[1]
             init_award_data_table(data_file)
 
-        start_year = 2007
-        end_year = 2025
+        fiscal_year = fiscal_year
         page = 1
 
         while True:
             try:
-                result = self.conn.sql(f"SELECT COUNT(*) FROM AwardTable WHERE page = {page}").execute()
+                result = self.conn.sql(f"SELECT COUNT(*) FROM AwardTable WHERE page = {page} AND fiscal_year = {fiscal_year}").execute()
                 if not result.iloc[0, 0]:
-                    df = DataPull.pull_awards_by_year(self, start_year, end_year, page)
+                    df = DataPull.pull_awards_by_year(self, fiscal_year, page)
                     if df.is_empty():
                         return self.conn.table("AwardTable")
                     self.conn.insert("AwardTable", df)    
-                    logging.info(f"Inserted page {page} to sqlite table.")
+                    logging.info(f"Inserted page {page} fiscal year {fiscal_year} to sqlite table.")
                 else:
-                    logging.info(f"Page {page} already in db.")
+                    logging.info(f"Page {page} fiscal year {fiscal_year} already in db.")
                 page += 1
             except Exception as e:
-                logging.error(f"Error inserting page {page} to sqlite table. {e}")
+                logging.error(f"Error inserting page {page} fiscal year {fiscal_year} to sqlite table. {e}")
                 return self.conn.table("AwardTable")
 
     def process_consumer(self, update: bool = False) -> ibis.expr.types.relations.Table:
