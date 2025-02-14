@@ -52,7 +52,7 @@ def init_consumer_table(db_path: str) -> None:
         """
         CREATE TABLE IF NOT EXISTS "consumertable" (
             id INTEGER PRIMARY KEY DEFAULT nextval('consumer_sequence'),
-            date TEXT,
+            date DATETIME,
             year INTEGER,
             month INTEGER,
             quarter INTEGER,
@@ -136,6 +136,24 @@ def init_consumer_table(db_path: str) -> None:
             tarifas_para_vehiculos_de_motor FLOAT,
             transporte_publico FLOAT,
             todos_los_articulos_y_servicios FLOAT
+        );
+        """
+    )
+
+def init_activity_table(db_path: str) -> None:
+    conn = get_conn(db_path=db_path)
+
+    # Create sequence for primary key
+    conn.sql("DROP SEQUENCE IF EXISTS activity_sequence;")
+    conn.sql("CREATE SEQUENCE activity_sequence START 1;")
+
+    # Create Indicators table
+    conn.sql(
+        """
+        CREATE TABLE IF NOT EXISTS "activitytable" (
+            id INTEGER PRIMARY KEY DEFAULT nextval('activity_sequence'),
+            date DATETIME,
+            index FLOAT
         );
         """
     )

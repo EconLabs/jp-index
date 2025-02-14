@@ -1,5 +1,5 @@
 import logging
-from ..models import init_consumer_table, init_indicators_table
+from ..models import init_consumer_table, init_indicators_table, init_activity_table
 from .data_pull import DataPull
 from datetime import datetime
 from ibis import _
@@ -465,13 +465,14 @@ class DataIndex(DataPull):
 
     def process_activity(self, update: bool = False) -> ibis.expr.types.relations.Table:
         if not os.path.exists(f"{self.saving_dir}/raw/activity.xls") or update:
-            self.pull_consumer(f"{self.saving_dir}/raw/activity.xls")
+            self.pull_activity(f"{self.saving_dir}/raw/activity.xls")
         if (
             "activitytable" not in self.conn.list_tables()
             or self.conn.table("activitytable").count().execute() == 0
             or update
         ):
             df = pl.read_excel(f"{self.saving_dir}/raw/activity.xls", sheet_id=3)
+            init_activity_table(self.data_file)
             df = df.select(pl.nth(0), pl.nth(1))
             df = df.filter(
                 (pl.nth(0).str.strip_chars().str.len_chars() <= 8)
@@ -483,3 +484,4 @@ class DataIndex(DataPull):
                 date=pl.col("date").str.to_datetime(), index=pl.nth(1).cast(pl.Float64)
             )
             self.conn.insert("activitytable", df)
+        return self.conn.table("activitytable")

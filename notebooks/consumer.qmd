@@ -14,18 +14,16 @@ os.chdir('..')
 ```
 
 ```{python}
-from sqlmodel import Field, Session, SQLModel, create_engine
-from src.data.data_process import DataProcess
-import polars as pl
-from src.dao.consumer_table import *
+import polars
+from src.data.data_process import DataIndex
+import ibis
+
+di = DataIndex()
+ibis.options.interactive = True
 ```
 
 ```{python}
-d = DataProcess("sqlite:///db.sqlite", "data/")
-```
-
-```{python}
-d.process_consumer()
+di.process_activity()
 ```
 
 ```{python}
