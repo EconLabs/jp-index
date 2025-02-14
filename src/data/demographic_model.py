@@ -16,10 +16,10 @@ class natModel():
         self.num_age_groups = len(tfr.index)
         self.num_years = len(tfr.index)
         self.start_year = tfr.index[0]
-        self.averages = self.nat_averages()
+        self.averages = self.data_averages()
         self.centered_data = self.centralized_frame()
     
-    def nat_averages(self):
+    def data_averages(self):
         aggregates = list(self.tfr.T.sum())
         averages = []
         for i in range(0, len(self.tfr.index)):
@@ -75,7 +75,7 @@ class natModel():
         return y_effects_f
     
 
-    def forecasted_tfr(self, projected_eff):
+    def forecasted_component(self, projected_eff):
         age_effects = self.age_effects()
         year_effects = projected_eff
         sing_vals = self.sing_vals()
@@ -98,7 +98,7 @@ class natModel():
         return final_matrix.T
 
 
-class dataTransform():
+class dataTransform_fertility():
     def __init__(self, fem_pop, births):
         self.births = births
         self.fem_pop = fem_pop
@@ -159,7 +159,7 @@ def main():
     female_pop = pd.read_csv("fem_pop.csv").set_index("year")
     nat_data = nat_data.T
     female_pop = female_pop.T
-    data_transformed = dataTransform(female_pop, nat_data)
+    data_transformed = dataTransform_fertility(female_pop, nat_data)
     nat_model = natModel(data_transformed.tfr, 6, data_transformed.errors())
     #nat_model.forecasted_tfr(nat_model.project(30)).to_csv("fert_rates_2050.csv")
     
