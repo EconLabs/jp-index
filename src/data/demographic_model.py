@@ -3,16 +3,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.nonparametric.kernel_regression import KernelReg
 from numpy.linalg import svd
-from statsmodels.tsa.arima.model import ARIMA
 from scipy.stats import boxcox
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from statsmodels.tsa.holtwinters import Holt
 
 class natModel():
-    def __init__(self, tfr, n_components, error):
-        self.tfr = np.log(tfr)
+    def __init__(self, tfr, n_components):
+        self.tfr = tfr
         self.n_components = n_components
-        self.error = error
         self.num_age_groups = len(tfr.index)
         self.num_years = len(tfr.index)
         self.start_year = tfr.index[0]
@@ -94,8 +92,9 @@ class natModel():
         final_matrix = pd.DataFrame(final_matrix)
         final_matrix = final_matrix.T
         for i in final_matrix.columns:
-            final_matrix[i] = np.exp(final_matrix[i] + averages[i])
+            final_matrix[i] = final_matrix[i] + averages[i]
         return final_matrix.T
+
 
 class mortModel():
     def __init__(self, mx, n_components):
@@ -157,7 +156,7 @@ class mortModel():
         y_effects_f = pd.DataFrame()
         for i in y_effects.columns:
             model = Holt(y_effects[i], damped_trend=True)
-            model_fit = model.fit()
+            model_fit = model.fit(damping_trend=0.985)
             y_effects_f[i] = pd.concat([pd.Series(model_fit.forecast(n_years))])
         y_effects_f = pd.concat([y_effects, y_effects_f], axis=0)
         return y_effects_f
@@ -186,76 +185,37 @@ class mortModel():
         final_matrix = final_matrix.T
         for i in final_matrix.columns:
             final_matrix[i] = final_matrix[i] + averages[i]
-        return final_matrix.T
+        return np.exp(final_matrix.T)
     
 class dataTransform_fertility():
-    def __init__(self, fem_pop, births):
+    def __init__(self, fem_pop, births, lmbda):
         self.births = births
         self.fem_pop = fem_pop
         self.columns = fem_pop.columns
-        self.tfr = self.fertility_rate()
-        self.num_age_groups = len(fem_pop.columns)
-        self.fit_data = self.box_cox_fit()
-        self.fit_lambda = self.lambda_fit()
-
-    def fertility_rate(self):
-        tfr = pd.DataFrame(index=self.fem_pop.index)
-        for i in self.columns:
-            tfr[i] = pd.concat([self.births[i] / self.fem_pop[i]])
-        return tfr
+        self.lmbda = lmbda
+        self.tfr = pd.DataFrame(self.births/self.fem_pop)
     
-    def box_cox_fit(self):
-        fitted_data = pd.DataFrame()
-        for i in range(0, self.num_age_groups):
-            fit, lamb = boxcox(self.tfr[self.columns[i]])
-            fitted_data[i] = pd.concat([pd.Series(fit)], axis=1)
-        fitted_data = fitted_data.set_index(self.tfr.index)
-        return fitted_data
-    
-    def lambda_fit(self):
-        fitted_lambda = pd.Series()
-        for i in range(0, self.num_age_groups):
-            fit, lamb = boxcox(self.tfr[self.columns[i]])
-            fitted_lambda[i] = lamb
-        return fitted_lambda
 
-    def kernel_transform(self):
-        num_age_groups = len(self.fit_data.columns)
-        tfr_transform = pd.DataFrame()
-        marginal_effects = pd.DataFrame()
-        rsquared = pd.Series()
-        for i in range(0, num_age_groups):
-            model = KernelReg(self.fit_data[i], self.fit_data[i], var_type='c')
-            tfr_hat, m_effects = model.fit()
-            rsquared[i] = model.r_squared()
-            tfr_transform[i] = pd.concat([pd.Series(tfr_hat)], axis=1)
-            marginal_effects[i] = pd.concat([pd.DataFrame(m_effects)], axis=1)
-        tfr_transform = tfr_transform.set_index(self.fit_data.index)
-        return tfr_transform, marginal_effects, rsquared
+    def box_cox(self):
+        tfr_bc = boxcox(self.tfr, lmbda=self.lmbda)
+        return pd.DataFrame(tfr_bc)
 
-    def errors(self):
-        variance = pd.DataFrame(index=self.tfr.index)
-        j = 0
-        for i in self.columns:
-            lambda_err = self.births[i].sum(axis=0) / self.fem_pop[i].sum(axis=0)
-            exp = 2*lambda_err - 1
-            variance[j] = pd.concat([(self.tfr[i]**exp)*(self.fem_pop[i].astype("float") ** -1)])
-            j += 1
-
-        return variance
 
 class dataTransform_mortality():
     def __init__(self, pop, deaths):
         self.pop = pop
         self.deaths = deaths
         self.mx = pd.DataFrame(deaths/pop)
+        self.mx_l = np.log(self.mx)
+
 
     def smooth_data(self):
         mx_s = pd.DataFrame()
-        for i in self.mx.columns:
-            temp = self.mx[i].values
+        for i in self.mx_l.columns:
+            temp = self.mx_l[i].values
             mx_s[i] = pd.Series(lowess(temp, range(len(temp)), frac=0.2, return_sorted=False))
         return mx_s
+
 
 def main():
     nat_data = pd.read_csv("births.csv").set_index("year")
@@ -265,22 +225,50 @@ def main():
     male_deaths = pd.read_csv("deaths_male.csv").set_index("year")
     female_deaths = pd.read_csv("deaths_female.csv").set_index("year")
 
-    nat_data = nat_data.T
-    female_pop_fert = female_pop_fert.T
-    data_transformed = dataTransform_fertility(female_pop_fert, nat_data)
-    nat_model = natModel(data_transformed.tfr, 6, data_transformed.errors())
+    #male_pop_test = pd.read_csv("exposure_male_test.csv").set_index("year")
+    #male_deaths_test = pd.read_csv("deaths_male_test.csv").set_index("year")
 
-    male_pop = male_pop.T
-    male_deaths = male_deaths.T
-    female_pop = female_pop.T
-    female_deaths = female_deaths.T
-    male_mx = dataTransform_mortality(male_pop, male_deaths).smooth_data()
-    female_mx = dataTransform_mortality(female_pop, female_deaths).mx
+    #nat_data = nat_data.T
+    #female_pop_fert = female_pop_fert.T
+    #data_transformed = dataTransform_fertility(female_pop_fert, nat_data, lmbda=0.19)
+    #nat_model = natModel(data_transformed.box_cox(), 6)
 
-    male_model_mort = mortModel(male_mx, 6)
-    female_model_mort = mortModel(female_mx, 6)
+    #male_pop = male_pop.T
+    #male_deaths = male_deaths.T
+    #female_pop = female_pop.T
+    #female_deaths = female_deaths.T
+    #male_pop_test = male_pop_test.T
+    #male_deaths_test = male_deaths_test.T
+    #male_mx = dataTransform_mortality(male_pop, male_deaths).smooth_data()
+    #female_mx = dataTransform_mortality(female_pop, female_deaths).smooth_data()
+    #male_test_mx = dataTransform_mortality(male_pop_test, male_deaths_test).smooth_data()
 
-    nat_model.forecasted_component(nat_model.project(30)).to_csv("forecasted_tfr.csv")
+    #male_model_mort = mortModel(male_mx, 6)
+    #female_model_mort = mortModel(female_mx, 6)
+    #male_model_test = mortModel(male_test_mx, 6)
+
+    #forecast_m = male_model_mort.forecasted_component(n_years=30).T
+    #forecast_m_test = male_model_test.forecasted_component(n_years=5).T
+    #forecast_f = female_model_mort.forecasted_component(n_years=30).T
+    #forecast_m["year"] = forecast_m.index + 1990
+    #forecast_m_test["year"] = forecast_m_test.index + 1990
+    #forecast_f["year"] = forecast_f.index + 1990
+    #male_mx = male_mx.T
+    #male_mx.reset_index(inplace=True)
+    #male_mx = male_mx.drop(["index"], axis="columns")
+    #male_mx["year"] = male_mx.index + 1990
+    
+
+    #for i in range(0, 16):
+    #    plt.subplot(1,4,1)
+    #    plt.plot(forecast_m["year"], forecast_m[i])
+    #    plt.subplot(1,4,2)
+    #    plt.plot(male_mx["year"], male_mx[i])
+    #    plt.subplot(1,4,3)
+    #    plt.plot(forecast_m_test["year"], forecast_m_test[i])
+    #    plt.subplot(1,4,4)
+    #    plt.plot(error_frame.index, error_frame[i])
+    #plt.show()
 
 
 if __name__ == "__main__":
