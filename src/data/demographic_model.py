@@ -1,11 +1,10 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from statsmodels.nonparametric.kernel_regression import KernelReg
 from numpy.linalg import svd
 from scipy.stats import boxcox
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from statsmodels.tsa.holtwinters import Holt
+from scipy.special import inv_boxcox
 
 class natModel():
     def __init__(self, tfr, n_components):
@@ -57,23 +56,20 @@ class natModel():
         return sing_vals
         
     
-    def project(self, n_years, ext_effects = None):
-        if ext_effects != None:
-            y_effects = ext_effects
-        else:
-            y_effects = self.year_effects()
+    def project(self, n_years, phi=0.98):
+        y_effects = self.year_effects()
 
         # Exponential Smoothing State Space Model
         y_effects_f = pd.DataFrame()
         for i in y_effects.columns:
             model = Holt(y_effects[i], damped_trend=True)
-            model_fit = model.fit()
+            model_fit = model.fit(damping_trend=phi)
             y_effects_f[i] = pd.concat([pd.Series(model_fit.forecast(n_years))])
         y_effects_f = pd.concat([y_effects, y_effects_f], axis=0)
         return y_effects_f
     
 
-    def forecasted_component(self, projected_eff):
+    def forecasted_component(self, l, projected_eff=None, n_years=None):
         age_effects = self.age_effects()
         year_effects = projected_eff
         sing_vals = self.sing_vals()
@@ -93,7 +89,8 @@ class natModel():
         final_matrix = final_matrix.T
         for i in final_matrix.columns:
             final_matrix[i] = final_matrix[i] + averages[i]
-        return final_matrix.T
+        final_matrix = inv_boxcox(final_matrix.T, l)
+        return final_matrix
 
 
 class mortModel():
@@ -146,17 +143,14 @@ class mortModel():
         return sing_vals
         
     
-    def project(self, n_years, ext_effects = None):
-        if ext_effects != None:
-            y_effects = ext_effects
-        else:
-            y_effects = self.year_effects()
+    def project(self, n_years, phi=0.98):
+        y_effects = self.year_effects()
 
         # Exponential Smoothing State Space Model
         y_effects_f = pd.DataFrame()
         for i in y_effects.columns:
             model = Holt(y_effects[i], damped_trend=True)
-            model_fit = model.fit(damping_trend=0.985)
+            model_fit = model.fit(damping_trend=phi)
             y_effects_f[i] = pd.concat([pd.Series(model_fit.forecast(n_years))])
         y_effects_f = pd.concat([y_effects, y_effects_f], axis=0)
         return y_effects_f
@@ -164,10 +158,7 @@ class mortModel():
 
     def forecasted_component(self, projected_eff=None, n_years=None):
         age_effects = self.age_effects()
-        if projected_eff == None:
-            year_effects = self.project(n_years)
-        else:
-            year_effects = projected_eff
+        year_effects = projected_eff
         sing_vals = self.sing_vals()
         averages = self.averages
         final_matrix = pd.DataFrame(np.zeros(shape=(self.num_age_groups, len(year_effects))))
@@ -189,9 +180,8 @@ class mortModel():
     
 class dataTransform_fertility():
     def __init__(self, fem_pop, births, lmbda):
-        self.births = births
         self.fem_pop = fem_pop
-        self.columns = fem_pop.columns
+        self.births = births
         self.lmbda = lmbda
         self.tfr = pd.DataFrame(self.births/self.fem_pop)
     
@@ -224,51 +214,6 @@ def main():
     female_pop = pd.read_csv("exposure_female.csv").set_index("year")
     male_deaths = pd.read_csv("deaths_male.csv").set_index("year")
     female_deaths = pd.read_csv("deaths_female.csv").set_index("year")
-
-    #male_pop_test = pd.read_csv("exposure_male_test.csv").set_index("year")
-    #male_deaths_test = pd.read_csv("deaths_male_test.csv").set_index("year")
-
-    #nat_data = nat_data.T
-    #female_pop_fert = female_pop_fert.T
-    #data_transformed = dataTransform_fertility(female_pop_fert, nat_data, lmbda=0.19)
-    #nat_model = natModel(data_transformed.box_cox(), 6)
-
-    #male_pop = male_pop.T
-    #male_deaths = male_deaths.T
-    #female_pop = female_pop.T
-    #female_deaths = female_deaths.T
-    #male_pop_test = male_pop_test.T
-    #male_deaths_test = male_deaths_test.T
-    #male_mx = dataTransform_mortality(male_pop, male_deaths).smooth_data()
-    #female_mx = dataTransform_mortality(female_pop, female_deaths).smooth_data()
-    #male_test_mx = dataTransform_mortality(male_pop_test, male_deaths_test).smooth_data()
-
-    #male_model_mort = mortModel(male_mx, 6)
-    #female_model_mort = mortModel(female_mx, 6)
-    #male_model_test = mortModel(male_test_mx, 6)
-
-    #forecast_m = male_model_mort.forecasted_component(n_years=30).T
-    #forecast_m_test = male_model_test.forecasted_component(n_years=5).T
-    #forecast_f = female_model_mort.forecasted_component(n_years=30).T
-    #forecast_m["year"] = forecast_m.index + 1990
-    #forecast_m_test["year"] = forecast_m_test.index + 1990
-    #forecast_f["year"] = forecast_f.index + 1990
-    #male_mx = male_mx.T
-    #male_mx.reset_index(inplace=True)
-    #male_mx = male_mx.drop(["index"], axis="columns")
-    #male_mx["year"] = male_mx.index + 1990
-    
-
-    #for i in range(0, 16):
-    #    plt.subplot(1,4,1)
-    #    plt.plot(forecast_m["year"], forecast_m[i])
-    #    plt.subplot(1,4,2)
-    #    plt.plot(male_mx["year"], male_mx[i])
-    #    plt.subplot(1,4,3)
-    #    plt.plot(forecast_m_test["year"], forecast_m_test[i])
-    #    plt.subplot(1,4,4)
-    #    plt.plot(error_frame.index, error_frame[i])
-    #plt.show()
 
 
 if __name__ == "__main__":

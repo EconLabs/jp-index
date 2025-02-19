@@ -1,20 +1,14 @@
-from demographic_model import dataTransform_fertility
-from demographic_model import natModel
+from demographic_model import dataTransform_fertility, natModel
 import pandas as pd
 import numpy as np
 from scipy.special import inv_boxcox
 
 
 def main():
-    nat_data_test = pd.read_csv("births_test.csv").set_index("year")
-    female_pop_fert_test = pd.read_csv("fem_pop_test.csv").set_index("year")
-    nat_data = pd.read_csv("births.csv").set_index("year")
-    female_pop_fert = pd.read_csv("fem_pop.csv").set_index("year")
-
-    nat_data = nat_data.T
-    nat_data_test = nat_data_test.T
-    female_pop_fert = female_pop_fert.T
-    female_pop_fert_test = female_pop_fert_test.T
+    nat_data_test = pd.read_csv("births_test.csv").set_index("year").T
+    female_pop_fert_test = pd.read_csv("fem_pop_test.csv").set_index("year").T
+    nat_data = pd.read_csv("births.csv").set_index("year").T
+    female_pop_fert = pd.read_csv("fem_pop.csv").set_index("year").T
 
     j = 0
     
@@ -28,9 +22,8 @@ def main():
         nat_model = natModel(transformed.box_cox(), 6)
         projected_b = nat_model.project(5)
         projected_data = nat_model.forecasted_component(projected_b)
-        projected_data_nbc = inv_boxcox(projected_data, l)
 
-        error_frame = projected_data_nbc.subtract(original_tfr, axis="columns")
+        error_frame = projected_data.subtract(original_tfr, axis="columns")
 
         mean_error = np.pow(error_frame.stack().dropna().mean(), 2)
 
