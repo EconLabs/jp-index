@@ -85,24 +85,19 @@ class DataIndex(DataPull):
             data_file = self.database_url.split("///")[1]
             init_award_data_table(data_file)
 
-        fiscal_year = fiscal_year
-        page = 1
-
-        while True:
-            try:
-                result = self.conn.sql(f"SELECT COUNT(*) FROM AwardTable WHERE page = {page} AND fiscal_year = {fiscal_year}").execute()
-                if not result.iloc[0, 0]:
-                    df = DataPull.pull_awards_by_year(self, fiscal_year, page)
-                    if df.is_empty():
-                        return self.conn.table("AwardTable")
-                    self.conn.insert("AwardTable", df)    
-                    logging.info(f"Inserted page {page} fiscal year {fiscal_year} to sqlite table.")
-                else:
-                    logging.info(f"Page {page} fiscal year {fiscal_year} already in db.")
-                page += 1
-            except Exception as e:
-                logging.error(f"Error inserting page {page} fiscal year {fiscal_year} to sqlite table. {e}")
-                return self.conn.table("AwardTable")
+        try:
+            result = self.conn.sql(f"SELECT COUNT(*) FROM AwardTable WHERE fiscal_year = {fiscal_year}").execute()
+            if not result.iloc[0, 0]:
+                df = DataPull.pull_awards_by_year(self, fiscal_year)
+                if df.is_empty():
+                    return self.conn.table("AwardTable")
+                self.conn.insert("AwardTable", df)    
+                logging.info(f"Inserted fiscal year {fiscal_year} to sqlite table.")
+            else:
+                logging.info(f"Fiscal year {fiscal_year} already in db.")
+        except Exception as e:
+            logging.error(f"Error inserting fiscal year {fiscal_year} to sqlite table. {e}")
+            return self.conn.table("AwardTable")
 
     def process_consumer(self, update: bool = False) -> ibis.expr.types.relations.Table:
         """
