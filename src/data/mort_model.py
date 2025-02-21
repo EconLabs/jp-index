@@ -55,7 +55,6 @@ def main():
             error_frame = test_forecast.subtract(female_data_or, axis="columns")
 
             mse = np.pow(error_frame.stack().dropna().mean(), 2)
-            print(mse)
 
             error_list.loc[j] = mse
             j = j + 1

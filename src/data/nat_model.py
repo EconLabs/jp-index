@@ -9,7 +9,7 @@ def main():
     female_pop_fert = pd.read_csv("fem_pop.csv").set_index("year").T
     birth_data_t = pd.read_csv("births_test.csv").set_index("year").T
     female_pop_fert_t = pd.read_csv("fem_pop_test.csv").set_index("year").T
-    lmbda = 0.18
+    lmbda = 0.21
 
     original_tfr = dataTransform_fertility(female_pop_fert, birth_data, lmbda).tfr.reset_index(drop=True).T.reset_index(drop=True).T
     tfr_data = dataTransform_fertility(female_pop_fert, birth_data, lmbda).smooth_data()
