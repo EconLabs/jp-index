@@ -19,9 +19,9 @@ def main():
         transformed = dataTransform_fertility(female_pop_fert_test, nat_data_test, lmbda = l)
         transformed_og = dataTransform_fertility(female_pop_fert, nat_data, lmbda=0)
         original_tfr = transformed_og.tfr.reset_index(drop=True).T.reset_index(drop=True).T
-        nat_model = natModel(transformed.box_cox(), 6)
+        nat_model = natModel(transformed.smooth_data(), 6)
         projected_b = nat_model.project(5)
-        projected_data = nat_model.forecasted_component(projected_b)
+        projected_data = nat_model.forecasted_component(l, projected_b)
 
         error_frame = projected_data.subtract(original_tfr, axis="columns")
 

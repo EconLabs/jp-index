@@ -9,11 +9,11 @@ def main():
     female_pop_fert = pd.read_csv("fem_pop.csv").set_index("year").T
     birth_data_t = pd.read_csv("births_test.csv").set_index("year").T
     female_pop_fert_t = pd.read_csv("fem_pop_test.csv").set_index("year").T
-    lmbda = 0.19
+    lmbda = 0.18
 
     original_tfr = dataTransform_fertility(female_pop_fert, birth_data, lmbda).tfr.reset_index(drop=True).T.reset_index(drop=True).T
-    tfr_data = dataTransform_fertility(female_pop_fert, birth_data, lmbda).box_cox()
-    tfr_t_data = dataTransform_fertility(female_pop_fert_t, birth_data_t, lmbda=lmbda).box_cox()
+    tfr_data = dataTransform_fertility(female_pop_fert, birth_data, lmbda).smooth_data()
+    tfr_t_data = dataTransform_fertility(female_pop_fert_t, birth_data_t, lmbda=lmbda).smooth_data()
 
     nat_model = natModel(tfr_data, 6)
     nat_model_t = natModel(tfr_t_data, 6)

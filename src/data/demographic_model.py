@@ -190,6 +190,14 @@ class dataTransform_fertility():
         tfr_bc = boxcox(self.tfr, lmbda=self.lmbda)
         return pd.DataFrame(tfr_bc)
 
+    def smooth_data(self):
+        tfr_bc = self.box_cox()
+        tfr_s = pd.DataFrame()
+        for i in tfr_bc.columns:
+            temp = tfr_bc[i].values
+            tfr_s[i] = pd.Series(lowess(temp, range(len(temp)), frac=0.2, return_sorted=False))
+        return tfr_s
+
 
 class dataTransform_mortality():
     def __init__(self, pop, deaths):
