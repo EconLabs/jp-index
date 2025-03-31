@@ -8,12 +8,23 @@ import polars.selectors as cs
 import polars as pl
 import ibis
 import os
+from .models import init_award_data_table
+import logging
+
 
 
 class DataIndex(DataPull):
     """
     Data processing class that calculates multiple indicators from the DataPull class
     """
+    def __init__(
+        self,
+        database_url: str = "sqlite:///db.sqlite",
+        debug: bool = False,
+    ):
+        """
+        Constructor for the DataProcess class. Creates a connection to the database and
+        creates the data directory if it does not exist.
 
     def __init__(
         self,
@@ -22,6 +33,68 @@ class DataIndex(DataPull):
         log_file: str = "data_process.log",
     ):
         super().__init__(saving_dir, database_file, log_file)
+
+        Returns
+        -------
+        DataProcess
+        """
+        data_dir = 'data/'
+        self.debug = debug
+        super().__init__(debug)
+        self.database_url = database_url
+        self.engine = create_engine(self.database_url)
+        self.data_dir = data_dir
+
+        if self.database_url.startswith("sqlite"):
+            self.conn = ibis.sqlite.connect(self.database_url.replace("sqlite:///", ""))
+        elif self.database_url.startswith("postgres"):
+            self.conn = ibis.postgres.connect(
+                user=self.database_url.split("://")[1].split(":")[0],
+                password=self.database_url.split("://")[1].split(":")[1].split("@")[0],
+                host=self.database_url.split("://")[1].split(":")[1].split("@")[1],
+                port=self.database_url.split("://")[1].split(":")[2].split("/")[0],
+                database=self.database_url.split("://")[1].split(":")[2].split("/")[1],
+            )
+        else:
+            raise Exception("Database url is not supported")
+
+        if not os.path.exists(f"{data_dir}/raw"):
+            os.makedirs(f"{data_dir}/raw")
+        if not os.path.exists(f"{data_dir}/processed"):
+            os.makedirs(f"{data_dir}/processed")
+        if self.database_url.startswith("sqlite"):
+            self.conn = ibis.sqlite.connect(self.database_url.replace("sqlite:///", ""))
+        elif self.database_url.startswith("postgres"):
+            self.conn = ibis.postgres.connect(
+                user=self.database_url.split("://")[1].split(":")[0],
+                password=self.database_url.split("://")[1].split(":")[1].split("@")[0],
+                host=self.database_url.split("://")[1].split(":")[1].split("@")[1],
+                port=self.database_url.split("://")[1].split(":")[2].split("/")[0],
+                database=self.database_url.split("://")[1].split(":")[2].split("/")[1],
+            )
+
+    def process_awards(self, fiscal_year: int, update: bool = False) -> it.Table:
+        if (
+            "AwardTable" not in self.conn.list_tables()
+            or self.conn.table("AwardTable").count().execute() == 0
+            or update
+        ): 
+            data_file = self.database_url.split("///")[1]
+            init_award_data_table(data_file)
+
+        try:
+            result = self.conn.sql(f"SELECT COUNT(*) FROM AwardTable WHERE fiscal_year = {fiscal_year}").execute()
+            if not result.iloc[0, 0]:
+                df = DataPull.pull_awards_by_year(self, fiscal_year)
+                if df.is_empty():
+                    return self.conn.table("AwardTable")
+                self.conn.insert("AwardTable", df)    
+                logging.info(f"Inserted fiscal year {fiscal_year} to sqlite table.")
+            else:
+                logging.info(f"Fiscal year {fiscal_year} already in db.")
+        except Exception as e:
+            logging.error(f"Error inserting fiscal year {fiscal_year} to sqlite table. {e}")
+            return self.conn.table("AwardTable")
 
     def process_consumer(self, update: bool = False) -> ibis.expr.types.relations.Table:
         """
@@ -37,15 +110,15 @@ class DataIndex(DataPull):
         -------
         pl.DataFrame
         """
-        if not os.path.exists(f"{self.saving_dir}/raw/consumer.xls") or update:
-            self.pull_consumer(f"{self.saving_dir}/raw/consumer.xls")
+        if not os.path.exists(f"{self.data_dir}/raw/consumer.xls") or update:
+            self.pull_consumer(f"{self.data_dir}/raw/consumer.xls")
         if (
             "consumertable" not in self.conn.list_tables()
             or self.conn.table("consumertable").count().execute() == 0
             or update
         ):
-            init_consumer_table(self.data_file)
-            df = pl.read_excel(f"{self.saving_dir}/raw/consumer.xls", sheet_id=1)
+            create_consumer_table(self.engine)
+            df = pl.read_excel(f"{self.data_dir}/raw/consumer.xls", sheet_id=1)
             names = df.head(1).to_dicts().pop()
             names = {k: self.clean_name(v) for k, v in names.items()}
             df = df.rename(names)
@@ -206,14 +279,14 @@ class DataIndex(DataPull):
         else:
             return self.conn.table("consumertable")
 
-    def consumer_data(self, time_frame: str) -> it.Table:
+    def consumer_data(self, agg: str) -> it.Table:
         df = self.process_consumer()
         variables = df.columns
         remove = ["id", "date", "month", "year", "quarter", "fiscal"]
         variables = [var for var in variables if var not in remove]
         aggregation_exprs = {var: getattr(_, var).sum().name(var) for var in variables}
 
-        match time_frame:
+        match agg:
             case "monthly":
                 return df
             case "quarterly":
@@ -266,26 +339,26 @@ class DataIndex(DataPull):
         """
 
         if (
-            not os.path.exists(f"{self.saving_dir}/raw/economic_indicators.xlsx")
+            not os.path.exists(f"{self.data_dir}/raw/economic_indicators.xlsx")
             or update
         ):
             self.pull_economic_indicators(
-                f"{self.saving_dir}/raw/economic_indicators.xlsx"
+                f"{self.data_dir}/raw/economic_indicators.xlsx"
             )
         if (
             "indicatorstable" not in self.conn.list_tables()
             or self.conn.table("indicatorstable").count().execute() == 0
             or update
         ):
-            init_indicators_table(self.data_file)
+            create_indicators_table(self.engine)
 
             jp_df = self.process_sheet(
-                f"{self.saving_dir}/raw/economic_indicators.xlsx", 3
+                f"{self.data_dir}/raw/economic_indicators.xlsx", 3
             )
 
             for sheet in range(4, 20):
                 df = self.process_sheet(
-                    f"{self.saving_dir}/raw/economic_indicators.xlsx", sheet
+                    f"{self.data_dir}/raw/economic_indicators.xlsx", sheet
                 )
                 jp_df = jp_df.join(df, on=["date"], how="left", validate="1:1")
 
@@ -296,6 +369,11 @@ class DataIndex(DataPull):
             return self.conn.table("indicatorstable")
         else:
             return self.conn.table("indicatorstable")
+
+    def jp_index_data(self, agg: str) -> it.Table:
+        df = self.process_jp_index()
+        variables = df.columns
+        remove = ["id", "date"]
 
     def process_sheet(self, file_path: str, sheet_id: int) -> pl.DataFrame:
         """
@@ -464,15 +542,15 @@ class DataIndex(DataPull):
         return clean_df
 
     def process_activity(self, update: bool = False) -> ibis.expr.types.relations.Table:
-        if not os.path.exists(f"{self.saving_dir}/raw/activity.xls") or update:
-            self.pull_activity(f"{self.saving_dir}/raw/activity.xls")
+        if not os.path.exists(f"{self.data_dir}/raw/activity.xls") or update:
+            self.pull_consumer(f"{self.data_dir}/raw/activity.xls")
         if (
             "activitytable" not in self.conn.list_tables()
             or self.conn.table("activitytable").count().execute() == 0
             or update
         ):
-            df = pl.read_excel(f"{self.saving_dir}/raw/activity.xls", sheet_id=3)
-            init_activity_table(self.data_file)
+
+            df = pl.read_excel(f"{self.data_dir}/raw/activity.xls", sheet_id=3)
             df = df.select(pl.nth(0), pl.nth(1))
             df = df.filter(
                 (pl.nth(0).str.strip_chars().str.len_chars() <= 8)
@@ -484,4 +562,3 @@ class DataIndex(DataPull):
                 date=pl.col("date").str.to_datetime(), index=pl.nth(1).cast(pl.Float64)
             )
             self.conn.insert("activitytable", df)
-        return self.conn.table("activitytable")

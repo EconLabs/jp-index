@@ -23,11 +23,7 @@ ibis.options.interactive = True
 
 ```{python}
 d = DataIndex()
-d.process_activity()
-```
-
-```{python}
-d.conn.list_tables()
+d.pull_activity("data/raw/test.xls")
 ```
 
 ```{python}
