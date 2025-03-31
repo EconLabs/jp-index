@@ -1,6 +1,5 @@
-from ..dao.economic_indicators_table import create_indicators_table
-from ..dao.consumer_table import create_consumer_table
-from sqlmodel import create_engine
+import logging
+from ..models import init_consumer_table, init_indicators_table, init_activity_table
 from .data_pull import DataPull
 from datetime import datetime
 from ibis import _
@@ -13,11 +12,11 @@ from .models import init_award_data_table
 import logging
 
 
+
 class DataIndex(DataPull):
     """
     Data processing class that calculates multiple indicators from the DataPull class
     """
-
     def __init__(
         self,
         database_url: str = "sqlite:///db.sqlite",
@@ -27,15 +26,13 @@ class DataIndex(DataPull):
         Constructor for the DataProcess class. Creates a connection to the database and
         creates the data directory if it does not exist.
 
-        Parameters
-        ----------
-        database_url : str
-            The URL of the database to connect to. Defaults to 'sqlite:///db.sqlite'.
-            Can be any valid SQLAlchemy connection string.
-        data_dir : str
-            The directory to store the data. Defaults to 'data/'.
-        debug : bool
-            Whether to print debug messages. Defaults to False.
+    def __init__(
+        self,
+        saving_dir: str = "data/",
+        database_file: str = "data.ddb",
+        log_file: str = "data_process.log",
+    ):
+        super().__init__(saving_dir, database_file, log_file)
 
         Returns
         -------
@@ -277,6 +274,7 @@ class DataIndex(DataPull):
                 .alias("fiscal"),
             )
             self.conn.insert("consumertable", df)
+            logging.info("Inserted data into consumertable")
             return self.conn.table("consumertable")
         else:
             return self.conn.table("consumertable")
@@ -551,6 +549,7 @@ class DataIndex(DataPull):
             or self.conn.table("activitytable").count().execute() == 0
             or update
         ):
+
             df = pl.read_excel(f"{self.data_dir}/raw/activity.xls", sheet_id=3)
             df = df.select(pl.nth(0), pl.nth(1))
             df = df.filter(

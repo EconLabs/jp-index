@@ -11,10 +11,8 @@ class monteCarlo():
         years = pd.Series(years)
         counter = 0
         for i in year_constants:
-            values_list = []
-            for _ in tqdm(range(self.simulation_count)):
-                sim_num = truncnorm.rvs((lower - i)/std_dev, (upper - i)/std_dev, loc=i, scale=std_dev, size=1)
-                values_list.append(sim_num.item())
+            for _ in tqdm(range(1)):
+                values_list = truncnorm.rvs((lower - i)/std_dev, (upper - i)/std_dev, loc=i, scale=std_dev, size=self.simulation_count)
             sim_values[f"{years[counter]}"] = pd.Series(values_list)
             print(f"Year {years[counter]} done")
             counter += 1
@@ -45,7 +43,7 @@ def main():
 
 
     year_constants_p = pd.read_csv("kt_p.csv")
-    mc = monteCarlo(100000)
+    mc = monteCarlo(1000000)
     mc.percentiles(mc.simulate_normal(year_constants_p["year"], year_constants_p["kt_m_p"], upper_normal_m, lower_normal_m, std_dev_m)).to_csv("kt_sim_m.csv")
     mc.percentiles(mc.simulate_normal(year_constants_p["year"], year_constants_p["kt_f_p"], upper_normal_f, lower_normal_f, std_dev_f)).to_csv("kt_sim_f.csv")
     

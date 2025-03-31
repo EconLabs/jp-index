@@ -1,4 +1,6 @@
 from tqdm import tqdm
+import ibis
+import logging
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import requests
@@ -458,3 +460,28 @@ class DataPull:
         url = "https://www.bde.pr.gov/BDE/PREDDOCS/I_EAI.XLS"
         self.pull_file(url, file_path)
         logging.info(f"Downloaded file to {file_path}")
+
+    def pull_file(self, url: str, filename: str, verify: bool = True) -> None:
+        if os.path.exists(filename):
+            logging.info(f"File {filename} already exists, skipping download")
+        else:
+            chunk_size = 10 * 1024 * 1024
+
+            with requests.get(url, stream=True, verify=verify) as response:
+                total_size = int(response.headers.get("content-length", 0))
+
+                with tqdm(
+                    total=total_size,
+                    unit="B",
+                    unit_scale=True,
+                    unit_divisor=1024,
+                    desc="Downloading",
+                ) as bar:
+                    with open(filename, "wb") as file:
+                        for chunk in response.iter_content(chunk_size=chunk_size):
+                            if chunk:
+                                file.write(chunk)
+                                bar.update(
+                                    len(chunk)
+                                )  # Update the progress bar with the size of the chunk
+                logging.info(f"Downloaded {filename}")
