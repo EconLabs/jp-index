@@ -1,12 +1,9 @@
 from tqdm import tqdm
-import ibis
 import logging
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import requests
 import os
-import logging
-import ibis
 import zipfile
 import polars as pl
 from ..models import (
