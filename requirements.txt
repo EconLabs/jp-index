@@ -12,7 +12,23 @@ numpy==1.26.4
     # via pyarrow
 polars==1.17.1
     # via jp-index (pyproject.toml)
-pyarrow==17.0.0
+progressbar2==4.5.0
+    # via pygam
+prometheus-client==0.21.1
+    # via jupyter-server
+prompt-toolkit==3.0.48
+    # via
+    #   ipython
+    #   jupyter-console
+psutil==6.1.0
+    # via ipykernel
+ptyprocess==0.7.0
+    # via
+    #   pexpect
+    #   terminado
+pure-eval==0.2.3
+    # via stack-data
+pyarrow==19.0.0
     # via
     #   jp-index (pyproject.toml)
     #   fastexcel

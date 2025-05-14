@@ -9,18 +9,22 @@ import logging
 import ibis
 import zipfile
 import polars as pl
+from ..models import (
+    get_conn,
+    init_awards_table,
+)
 
 
 class DataPull:
     def __init__(
         self,
         saving_dir: str = "data/",
-        database_url: str = "duckdb:///data.ddb",
+        database_file: str = "data.ddb",
     ):
-        self.database_url = database_url
+        self.database_url = database_file
         self.saving_dir = saving_dir
-        self.data_file = self.database_url.split("///")[1]
-        self.conn = ibis.duckdb.connect(f"{self.data_file}")
+        self.data_file = self.database_url
+        self.conn = get_conn(self.data_file)
 
         logging.basicConfig(
             level=logging.INFO,
@@ -324,10 +328,11 @@ class DataPull:
                 pl.col("last_modified_date").cast(pl.Utf8).fill_null(pl.lit(None)),
             ]
         )
+        acs = acs.rename({col: col.lower().replace("-", "_") for col in acs.columns})
 
         return acs
 
-    def pull_awards_by_year(self, fiscal_year: int):
+    def pull_awards_by_year(self, fiscal_year: int) -> pl.DataFrame:
         base_url = "https://api.usaspending.gov/api/v2/bulk_download/awards/"
         headers = {"Content-Type": "application/json"}
 
@@ -395,6 +400,28 @@ class DataPull:
         else:
             logging.info("No extracted files found.")
         return None
+    
+    def insert_awards_by_year(self, fiscal_year):
+        if (
+            "AwardTable"
+            not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
+        ):
+            init_awards_table(self.data_file)
+
+        try:
+            result = self.conn.sql(f"SELECT COUNT(*) FROM AwardTable WHERE fiscal_year = {fiscal_year}").fetchone()[0]
+            if not result:
+                df = self.pull_awards_by_year(fiscal_year)
+                if df.is_empty():
+                    return self.conn.sql("SELECT * FROM 'AwardTable';").pl() 
+                self.conn.sql("INSERT INTO 'AwardTable' BY NAME SELECT * FROM df;")
+                logging.info(f"Inserted fiscal year {fiscal_year} to sqlite table.")
+            else:
+                logging.info(f"Fiscal year {fiscal_year} already in db.")
+        except Exception as e:
+            logging.error(f"Error inserting fiscal year {fiscal_year} to sqlite table. {e}")
+            return self.conn.sql("SELECT * FROM 'AwardTable';").pl()
+        return self.conn.sql("SELECT * FROM 'AwardTable';").pl()
 
     def pull_consumer(self, file_path: str):
         session = requests.Session()
