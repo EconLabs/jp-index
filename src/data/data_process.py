@@ -1,14 +1,15 @@
 import logging
-from ..models import init_consumer_table, init_indicators_table, init_activity_table
 from .data_pull import DataPull
 from datetime import datetime
-from ibis import _
-import ibis.expr.types as it
 import polars.selectors as cs
 import polars as pl
-import ibis
 import os
-from .models import init_award_data_table
+from ..models import (
+    get_conn,
+    init_consumer_table,
+    init_indicators_table,
+    init_activity_table
+)
 import logging
 
 
@@ -19,7 +20,7 @@ class DataIndex(DataPull):
     """
     def __init__(
         self,
-        database_url: str = "sqlite:///db.sqlite",
+        database_file: str = "data.ddb",
         debug: bool = False,
     ):
         """
@@ -40,40 +41,17 @@ class DataIndex(DataPull):
         """
         data_dir = 'data/'
         self.debug = debug
-        super().__init__(debug)
-        self.database_url = database_url
-        self.engine = create_engine(self.database_url)
+        super().__init__()
+        self.database_url = database_file
+        self.conn = get_conn(self.database_url)
         self.data_dir = data_dir
-
-        if self.database_url.startswith("sqlite"):
-            self.conn = ibis.sqlite.connect(self.database_url.replace("sqlite:///", ""))
-        elif self.database_url.startswith("postgres"):
-            self.conn = ibis.postgres.connect(
-                user=self.database_url.split("://")[1].split(":")[0],
-                password=self.database_url.split("://")[1].split(":")[1].split("@")[0],
-                host=self.database_url.split("://")[1].split(":")[1].split("@")[1],
-                port=self.database_url.split("://")[1].split(":")[2].split("/")[0],
-                database=self.database_url.split("://")[1].split(":")[2].split("/")[1],
-            )
-        else:
-            raise Exception("Database url is not supported")
 
         if not os.path.exists(f"{data_dir}/raw"):
             os.makedirs(f"{data_dir}/raw")
         if not os.path.exists(f"{data_dir}/processed"):
             os.makedirs(f"{data_dir}/processed")
-        if self.database_url.startswith("sqlite"):
-            self.conn = ibis.sqlite.connect(self.database_url.replace("sqlite:///", ""))
-        elif self.database_url.startswith("postgres"):
-            self.conn = ibis.postgres.connect(
-                user=self.database_url.split("://")[1].split(":")[0],
-                password=self.database_url.split("://")[1].split(":")[1].split("@")[0],
-                host=self.database_url.split("://")[1].split(":")[1].split("@")[1],
-                port=self.database_url.split("://")[1].split(":")[2].split("/")[0],
-                database=self.database_url.split("://")[1].split(":")[2].split("/")[1],
-            )
 
-    def process_consumer(self, update: bool = False) -> ibis.expr.types.relations.Table:
+    def process_consumer(self, update: bool = False) -> pl.DataFrame:
         """
         Processes the consumer data and stores it in the database. If the data does
         not exist, it will pull the data from the source.
@@ -90,11 +68,11 @@ class DataIndex(DataPull):
         if not os.path.exists(f"{self.data_dir}/raw/consumer.xls") or update:
             self.pull_consumer(f"{self.data_dir}/raw/consumer.xls")
         if (
-            "consumertable" not in self.conn.list_tables()
-            or self.conn.table("consumertable").count().execute() == 0
+            "consumertable" not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
+            or not self.conn.sql(f"SELECT COUNT(*) FROM consumertable").fetchone()[0]
             or update
         ):
-            create_consumer_table(self.engine)
+            init_consumer_table(self.data_file)
             df = pl.read_excel(f"{self.data_dir}/raw/consumer.xls", sheet_id=1)
             names = df.head(1).to_dicts().pop()
             names = {k: self.clean_name(v) for k, v in names.items()}
@@ -250,28 +228,28 @@ class DataIndex(DataPull):
                 .otherwise(pl.col("year"))
                 .alias("fiscal"),
             )
-            self.conn.insert("consumertable", df)
+            self.conn.sql("INSERT INTO 'consumertable' BY NAME SELECT * FROM df;")
             logging.info("Inserted data into consumertable")
-            return self.conn.table("consumertable")
+            return self.conn.sql("SELECT * FROM 'consumertable';").pl()
         else:
-            return self.conn.table("consumertable")
+            return self.conn.sql("SELECT * FROM 'consumertable';").pl()
 
-    def consumer_data(self, agg: str) -> it.Table:
+    def consumer_data(self, agg: str) -> pl.DataFrame:
         df = self.process_consumer()
         variables = df.columns
         remove = ["id", "date", "month", "year", "quarter", "fiscal"]
         variables = [var for var in variables if var not in remove]
-        aggregation_exprs = {var: getattr(_, var).sum().name(var) for var in variables}
+        aggregation_exprs = [pl.col(var).sum().alias(var) for var in variables]
 
         match agg:
             case "monthly":
                 return df
             case "quarterly":
-                return df.group_by(["year", "quarter"]).aggregate(**aggregation_exprs)
+                return df.group_by(["year", "quarter"]).agg(aggregation_exprs)
             case "yearly":
-                return df.group_by("year").aggregate(**aggregation_exprs)
+                return df.group_by("year").agg(aggregation_exprs)
             case "fiscal":
-                return df.group_by("fiscal").aggregate(**aggregation_exprs)
+                return df.group_by("fiscal").agg(aggregation_exprs)
             case _:
                 raise ValueError("Invalid aggregation")
 
@@ -300,7 +278,7 @@ class DataIndex(DataPull):
             cleaned = cleaned.replace(old, new)
         return cleaned
 
-    def process_jp_index(self, update: bool = False) -> ibis.expr.types.relations.Table:
+    def process_jp_index(self, update: bool = False) -> pl.DataFrame:
         """
         Processes the economic indicators data and stores it in the database.
         If the data does not exist, it will pull the data from the source.
@@ -323,11 +301,11 @@ class DataIndex(DataPull):
                 f"{self.data_dir}/raw/economic_indicators.xlsx"
             )
         if (
-            "indicatorstable" not in self.conn.list_tables()
-            or self.conn.table("indicatorstable").count().execute() == 0
+            "indicatorstable" not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
+            or not self.conn.sql(f"SELECT COUNT(*) FROM indicatorstable").fetchone()[0]
             or update
         ):
-            create_indicators_table(self.engine)
+            init_indicators_table(self.data_file)
 
             jp_df = self.process_sheet(
                 f"{self.data_dir}/raw/economic_indicators.xlsx", 3
@@ -342,12 +320,12 @@ class DataIndex(DataPull):
             jp_df = jp_df.sort(by="date").with_columns(
                 id=pl.col("date").rank().cast(pl.Int64)
             )
-            self.conn.insert("indicatorstable", jp_df)
-            return self.conn.table("indicatorstable")
+            self.conn.sql("INSERT INTO 'indicatorstable' BY NAME SELECT * FROM jp_df;")
+            return self.conn.sql("SELECT * FROM 'indicatorstable';").pl()
         else:
-            return self.conn.table("indicatorstable")
+            return self.conn.sql("SELECT * FROM 'indicatorstable';").pl()
 
-    def jp_index_data(self, agg: str) -> it.Table:
+    def jp_index_data(self, agg: str) -> pl.DataFrame:
         df = self.process_jp_index()
         variables = df.columns
         remove = ["id", "date"]
@@ -518,14 +496,15 @@ class DataIndex(DataPull):
             clean_df = pl.concat([clean_df, tmp], how="vertical")
         return clean_df
 
-    def process_activity(self, update: bool = False) -> ibis.expr.types.relations.Table:
+    def process_activity(self, update: bool = False) -> pl.DataFrame:
         if not os.path.exists(f"{self.data_dir}/raw/activity.xls") or update:
             self.pull_consumer(f"{self.data_dir}/raw/activity.xls")
         if (
-            "activitytable" not in self.conn.list_tables()
-            or self.conn.table("activitytable").count().execute() == 0
+            "activitytable" not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
+            or not self.conn.sql(f"SELECT COUNT(*) FROM activitytable").fetchone()[0]
             or update
         ):
+            init_activity_table(self.data_file)
 
             df = pl.read_excel(f"{self.data_dir}/raw/activity.xls", sheet_id=3)
             df = df.select(pl.nth(0), pl.nth(1))
@@ -538,4 +517,8 @@ class DataIndex(DataPull):
             df = df.select(
                 date=pl.col("date").str.to_datetime(), index=pl.nth(1).cast(pl.Float64)
             )
-            self.conn.insert("activitytable", df)
+            self.conn.sql("INSERT INTO 'activitytable' BY NAME SELECT * FROM df;")
+
+            return self.conn.sql("SELECT * FROM 'activitytable';").pl()
+        else:
+            return self.conn.sql("SELECT * FROM 'activitytable';").pl()
