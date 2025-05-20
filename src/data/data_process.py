@@ -41,7 +41,7 @@ class DataIndex(DataPull):
         """
         data_dir = 'data/'
         self.debug = debug
-        super().__init__()
+        super().__init__(debug)
         self.database_url = database_file
         self.conn = get_conn(self.database_url)
         self.data_dir = data_dir
@@ -233,6 +233,121 @@ class DataIndex(DataPull):
             return self.conn.sql("SELECT * FROM 'consumertable';").pl()
         else:
             return self.conn.sql("SELECT * FROM 'consumertable';").pl()
+        
+    def process_awards_by_secter(self, type, agency):
+        df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
+
+        month_map = {
+            1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 
+            7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec', 
+        }
+        months = list(month_map.values())
+        
+        df = df.with_columns([
+            pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").alias("parsed_date"),
+            ((pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.month()).alias("month")),
+            ((pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.year()).alias("year"))
+        ])
+        df = df.with_columns(
+            pl.col("month").cast(pl.String).replace(month_map).alias("month_name").cast(pl.String),
+            (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("pr_fiscal_year"),
+            pl.col('awarding_agency_name').str.to_lowercase()
+        )
+        agency = agency.lower()
+        type = type.lower()
+
+        agg_expr = "federal_action_obligation"
+        df = df.filter(pl.col("awarding_agency_name") == agency)
+
+        match type:
+            case 'fiscal':
+                grouped_df = df.with_columns(
+                    (pl.col("pr_fiscal_year")).cast(pl.String).alias("time_period")
+                )
+                grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
+            case 'year':
+                grouped_df = df.with_columns(
+                    (pl.col("year")).cast(pl.String).alias("time_period")
+                )
+                grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
+            case 'quarter':
+                quarter_expr = (
+                    pl.when(pl.col("month").is_in([1, 2, 3])).then(pl.lit("q1"))
+                    .when(pl.col("month").is_in([4, 5, 6])).then(pl.lit("q2"))
+                    .when(pl.col("month").is_in([7, 8, 9])).then(pl.lit("q3"))
+                    .when(pl.col("month").is_in([10, 11, 12])).then(pl.lit("q4"))
+                    .otherwise(pl.lit("q?"))
+                )
+                grouped_df = df.with_columns(
+                    (pl.col("year").cast(pl.String) + quarter_expr).alias("time_period")
+                )
+                grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
+            case 'month':
+                results = pl.DataFrame(schema={
+                    "month_name": pl.String,
+                    "awarding_agency_name": pl.String,
+                    "year": pl.Int32,
+                    "federal_action_obligation": pl.Float32,
+                    "time_period": pl.String,
+                })
+                months = pl.DataFrame({'month_name': months}).select([
+                    pl.col("month_name").cast(pl.String)
+                ])
+                for year in df.select(pl.col("year")).unique().to_series().to_list():
+                    df_year = df.filter(pl.col("year") == year)
+                    df_year = months.join(df_year, on="month_name", how="outer")
+                    df_year = df_year.select(["month_name", "federal_action_obligation", "awarding_agency_name", "year"]).with_columns(
+                        pl.col('year').fill_null(year),
+                        pl.col("federal_action_obligation").fill_null(0),
+                        pl.col('awarding_agency_name').fill_null(agency)
+                    )
+                    df_year = df_year.group_by(['month_name', 'awarding_agency_name', 'year']).agg(pl.col(agg_expr).sum())
+                    df_year = df_year.with_columns(
+                        (pl.col("year").cast(pl.Utf8) + pl.col("month_name")).alias("time_period")
+                    )
+                    results = pl.concat([results, df_year])
+                grouped_df = results
+                grouped_df = grouped_df.group_by(['awarding_agency_name', 'time_period']).agg(pl.col(agg_expr).sum())
+                grouped_df = grouped_df.with_columns(
+                    pl.col("time_period").str.strptime(pl.Date, "%Y%b", strict=False).dt.strftime("%Y-%m").alias("parsed_period")
+                ).sort("parsed_period")
+        
+        return grouped_df
+    
+    def process_awards_by_category(self, year, quarter, month, type, category):
+        df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
+        
+        df = df.with_columns([
+            pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").alias("parsed_date"),
+            (pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.month()).alias("month"),
+            (pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.year()).alias("year"),
+            pl.col(category).str.to_lowercase()
+        ])
+        df = df.with_columns([
+            (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("pr_fiscal_year"),
+        ])
+        type = type.lower()
+
+        agg_expr = "federal_action_obligation"
+
+        match type:
+            case 'fiscal':
+                df_filtered = df.filter(pl.col("pr_fiscal_year") == year)
+            case 'year':
+                df_filtered = df.filter(pl.col("year") == year)
+            case 'month':
+                df_filtered = df.filter(pl.col("month") == month)
+            case 'quarter':
+                quarter_to_calendar_month = {
+                    1: [1, 2, 3], 
+                    2: [4, 5, 6], 
+                    3: [7, 8, 9],
+                    4: [10, 11, 12]
+                }
+                df_filtered = df.filter(pl.col("month").is_in(quarter_to_calendar_month[quarter]))
+        grouped_df = df_filtered.group_by([category]).agg(pl.col(agg_expr).sum())
+
+        return grouped_df
 
     def consumer_data(self, agg: str) -> pl.DataFrame:
         df = self.process_consumer()
