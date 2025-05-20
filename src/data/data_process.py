@@ -1,31 +1,15 @@
-import logging
 from .data_pull import DataPull
 from datetime import datetime
 import polars.selectors as cs
 import polars as pl
 import os
-from ..models import (
-    get_conn,
-    init_consumer_table,
-    init_indicators_table,
-    init_activity_table
-)
-import logging
-
+from ..models import init_indicators_table
 
 
 class DataIndex(DataPull):
     """
     Data processing class that calculates multiple indicators from the DataPull class
     """
-    def __init__(
-        self,
-        database_file: str = "data.ddb",
-        debug: bool = False,
-    ):
-        """
-        Constructor for the DataProcess class. Creates a connection to the database and
-        creates the data directory if it does not exist.
 
     def __init__(
         self,
@@ -33,330 +17,32 @@ class DataIndex(DataPull):
         database_file: str = "data.ddb",
         log_file: str = "data_process.log",
     ):
-        super().__init__(saving_dir, database_file, log_file)
-
-        Returns
-        -------
-        DataProcess
         """
-        data_dir = 'data/'
-        self.debug = debug
-        super().__init__(debug)
-        self.database_url = database_file
-        self.conn = get_conn(self.database_url)
-        self.data_dir = data_dir
-
-        if not os.path.exists(f"{data_dir}/raw"):
-            os.makedirs(f"{data_dir}/raw")
-        if not os.path.exists(f"{data_dir}/processed"):
-            os.makedirs(f"{data_dir}/processed")
-
-    def process_consumer(self, update: bool = False) -> pl.DataFrame:
-        """
-        Processes the consumer data and stores it in the database. If the data does
-        not exist, it will pull the data from the source.
+        Initialize the DataIndex class.
 
         Parameters
         ----------
-        update : bool
-            Whether to update the data. Defaults to False.
+        saving_dir: str
+            Directory to save the data.
+        database_file: str
+            file path that will save the duckdb instance
+        log_file: str
+            file path that will save the log messegases
 
         Returns
         -------
-        pl.DataFrame
+        None
         """
-        if not os.path.exists(f"{self.data_dir}/raw/consumer.xls") or update:
-            self.pull_consumer(f"{self.data_dir}/raw/consumer.xls")
-        if (
-            "consumertable" not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
-            or not self.conn.sql(f"SELECT COUNT(*) FROM consumertable").fetchone()[0]
-            or update
-        ):
-            init_consumer_table(self.data_file)
-            df = pl.read_excel(f"{self.data_dir}/raw/consumer.xls", sheet_id=1)
-            names = df.head(1).to_dicts().pop()
-            names = {k: self.clean_name(v) for k, v in names.items()}
-            df = df.rename(names)
-            df = df.tail(-2).head(-1)
-            df = df.with_columns(pl.col("descripcion").str.to_lowercase())
-            df = df.with_columns(
-                (
-                    pl.when(pl.col("descripcion").str.contains("ene"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("ene", "01")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("feb"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("feb", "02")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("mar"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("mar", "03")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("abr"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("abr", "04")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("may"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("may", "05")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("jun"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("jun", "06")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("jul"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("jul", "07")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("ago"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("ago", "08")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("sep"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("sep", "09")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("oct"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("oct", "10")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("nov"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("nov", "11")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .when(pl.col("descripcion").str.contains("dic"))
-                    .then(
-                        pl.col("descripcion")
-                        .str.replace("dic", "12")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["month", "year"])
-                        .alias("date")
-                    )
-                    .otherwise(
-                        pl.col("descripcion")
-                        .str.split_exact("-", 1)
-                        .struct.rename_fields(["year", "month"])
-                        .alias("date")
-                    )
-                )
-            ).unnest("date")
-            df = df.with_columns(year=pl.col("year").str.strip_chars())
-            df = df.with_columns(
-                (
-                    pl.when(
-                        (pl.col("year").str.len_chars() == 2)
-                        & (pl.col("year").str.strip_chars().cast(pl.Int32) < 80)
-                    )
-                    .then(pl.col("year").str.strip_chars().cast(pl.Int32) + 2000)
-                    .when(
-                        (pl.col("year").str.len_chars() == 2)
-                        & (pl.col("year").str.strip_chars().cast(pl.Int32) >= 80)
-                    )
-                    .then(pl.col("year").str.strip_chars().cast(pl.Int32) + 1900)
-                    .otherwise(pl.col("year").str.strip_chars().cast(pl.Int32))
-                    .alias("year")
-                )
-            )
-            df = df.with_columns(
-                date=pl.date(pl.col("year").cast(pl.String), pl.col("month"), 1)
-            ).sort(by="date")
-            df = df.with_columns(pl.col("date").cast(pl.String))
-            df = df.drop(["year", "month", "descripcion"])
-            df = df.with_columns(pl.all().exclude("date").cast(pl.Float64))
-            df = df.with_columns(
-                year=pl.col("date").str.slice(0, 4).cast(pl.Int64),
-                month=pl.col("date").str.slice(5, 2).cast(pl.Int64),
-            )
-            df = df.with_columns(
-                pl.when((pl.col("month") >= 1) & (pl.col("month") <= 3))
-                .then(1)
-                .when((pl.col("month") >= 4) & (pl.col("month") <= 6))
-                .then(2)
-                .when((pl.col("month") >= 7) & (pl.col("month") <= 9))
-                .then(3)
-                .when((pl.col("month") >= 10) & (pl.col("month") <= 12))
-                .then(4)
-                .otherwise(0)
-                .alias("quarter"),
-                pl.when(pl.col("month") > 6)
-                .then(pl.col("year") + 1)
-                .otherwise(pl.col("year"))
-                .alias("fiscal"),
-            )
-            self.conn.sql("INSERT INTO 'consumertable' BY NAME SELECT * FROM df;")
-            logging.info("Inserted data into consumertable")
-            return self.conn.sql("SELECT * FROM 'consumertable';").pl()
-        else:
-            return self.conn.sql("SELECT * FROM 'consumertable';").pl()
-        
-    def process_awards_by_secter(self, type, agency):
-        df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
+        super().__init__(saving_dir, database_file, log_file)
 
-        month_map = {
-            1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 
-            7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec', 
-        }
-        months = list(month_map.values())
-        
-        df = df.with_columns([
-            pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").alias("parsed_date"),
-            ((pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.month()).alias("month")),
-            ((pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.year()).alias("year"))
-        ])
-        df = df.with_columns(
-            pl.col("month").cast(pl.String).replace(month_map).alias("month_name").cast(pl.String),
-            (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("pr_fiscal_year"),
-            pl.col('awarding_agency_name').str.to_lowercase()
-        )
-        agency = agency.lower()
-        type = type.lower()
-
-        agg_expr = "federal_action_obligation"
-        df = df.filter(pl.col("awarding_agency_name") == agency)
-
-        match type:
-            case 'fiscal':
-                grouped_df = df.with_columns(
-                    (pl.col("pr_fiscal_year")).cast(pl.String).alias("time_period")
-                )
-                grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
-            case 'year':
-                grouped_df = df.with_columns(
-                    (pl.col("year")).cast(pl.String).alias("time_period")
-                )
-                grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
-            case 'quarter':
-                quarter_expr = (
-                    pl.when(pl.col("month").is_in([1, 2, 3])).then(pl.lit("q1"))
-                    .when(pl.col("month").is_in([4, 5, 6])).then(pl.lit("q2"))
-                    .when(pl.col("month").is_in([7, 8, 9])).then(pl.lit("q3"))
-                    .when(pl.col("month").is_in([10, 11, 12])).then(pl.lit("q4"))
-                    .otherwise(pl.lit("q?"))
-                )
-                grouped_df = df.with_columns(
-                    (pl.col("year").cast(pl.String) + quarter_expr).alias("time_period")
-                )
-                grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
-            case 'month':
-                results = pl.DataFrame(schema={
-                    "month_name": pl.String,
-                    "awarding_agency_name": pl.String,
-                    "year": pl.Int32,
-                    "federal_action_obligation": pl.Float32,
-                    "time_period": pl.String,
-                })
-                months = pl.DataFrame({'month_name': months}).select([
-                    pl.col("month_name").cast(pl.String)
-                ])
-                for year in df.select(pl.col("year")).unique().to_series().to_list():
-                    df_year = df.filter(pl.col("year") == year)
-                    df_year = months.join(df_year, on="month_name", how="outer")
-                    df_year = df_year.select(["month_name", "federal_action_obligation", "awarding_agency_name", "year"]).with_columns(
-                        pl.col('year').fill_null(year),
-                        pl.col("federal_action_obligation").fill_null(0),
-                        pl.col('awarding_agency_name').fill_null(agency)
-                    )
-                    df_year = df_year.group_by(['month_name', 'awarding_agency_name', 'year']).agg(pl.col(agg_expr).sum())
-                    df_year = df_year.with_columns(
-                        (pl.col("year").cast(pl.Utf8) + pl.col("month_name")).alias("time_period")
-                    )
-                    results = pl.concat([results, df_year])
-                grouped_df = results
-                grouped_df = grouped_df.group_by(['awarding_agency_name', 'time_period']).agg(pl.col(agg_expr).sum())
-                grouped_df = grouped_df.with_columns(
-                    pl.col("time_period").str.strptime(pl.Date, "%Y%b", strict=False).dt.strftime("%Y-%m").alias("parsed_period")
-                ).sort("parsed_period")
-        
-        return grouped_df
-    
-    def process_awards_by_category(self, year, quarter, month, type, category):
-        df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
-        
-        df = df.with_columns([
-            pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").alias("parsed_date"),
-            (pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.month()).alias("month"),
-            (pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.year()).alias("year"),
-            pl.col(category).str.to_lowercase()
-        ])
-        df = df.with_columns([
-            (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("pr_fiscal_year"),
-        ])
-        type = type.lower()
-
-        agg_expr = "federal_action_obligation"
-
-        match type:
-            case 'fiscal':
-                df_filtered = df.filter(pl.col("pr_fiscal_year") == year)
-            case 'year':
-                df_filtered = df.filter(pl.col("year") == year)
-            case 'month':
-                df_filtered = df.filter(pl.col("month") == month)
-            case 'quarter':
-                quarter_to_calendar_month = {
-                    1: [1, 2, 3], 
-                    2: [4, 5, 6], 
-                    3: [7, 8, 9],
-                    4: [10, 11, 12]
-                }
-                df_filtered = df.filter(pl.col("month").is_in(quarter_to_calendar_month[quarter]))
-        grouped_df = df_filtered.group_by([category]).agg(pl.col(agg_expr).sum())
-
-        return grouped_df
-
-    def consumer_data(self, agg: str) -> pl.DataFrame:
-        df = self.process_consumer()
+    def consumer_data(self, time_frame: str) -> pl.DataFrame:
+        df = self.insert_consumer()
         variables = df.columns
         remove = ["id", "date", "month", "year", "quarter", "fiscal"]
         variables = [var for var in variables if var not in remove]
         aggregation_exprs = [pl.col(var).sum().alias(var) for var in variables]
 
-        match agg:
+        match time_frame:
             case "monthly":
                 return df
             case "quarterly":
@@ -368,32 +54,7 @@ class DataIndex(DataPull):
             case _:
                 raise ValueError("Invalid aggregation")
 
-    def clean_name(self, name: str) -> str:
-        """
-        Cleans the name of a column by converting it to lowercase, removing special characters,
-        and replacing accented characters with their non-accented counterparts.
-
-        Parameters
-        ----------
-        name : str
-
-        Returns
-        -------
-        str
-
-        """
-        cleaned = name.lower().strip()
-        cleaned = cleaned.replace("-", " ").replace("=", "")
-        cleaned = cleaned.replace("  ", "_").replace(" ", "_")
-        cleaned = cleaned.replace("*", "").replace(",", "")
-        cleaned = cleaned.replace("__", "_")
-        cleaned = cleaned.replace(")", "").replace("(", "")
-        replacements = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n"}
-        for old, new in replacements.items():
-            cleaned = cleaned.replace(old, new)
-        return cleaned
-
-    def process_jp_index(self, update: bool = False) -> pl.DataFrame:
+    def insert_jp_index(self, update: bool = False) -> pl.DataFrame:
         """
         Processes the economic indicators data and stores it in the database.
         If the data does not exist, it will pull the data from the source.
@@ -409,26 +70,25 @@ class DataIndex(DataPull):
         """
 
         if (
-            not os.path.exists(f"{self.data_dir}/raw/economic_indicators.xlsx")
+            not os.path.exists(f"{self.saving_dir}raw/economic_indicators.xlsx")
             or update
         ):
             self.pull_economic_indicators(
-                f"{self.data_dir}/raw/economic_indicators.xlsx"
+                f"{self.saving_dir}raw/economic_indicators.xlsx"
             )
         if (
-            "indicatorstable" not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
-            or not self.conn.sql(f"SELECT COUNT(*) FROM indicatorstable").fetchone()[0]
-            or update
+            "indicatorstable"
+            not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
         ):
             init_indicators_table(self.data_file)
-
+        if self.conn.sql("SELECT * FROM 'indicatorstable';").df().empty:
             jp_df = self.process_sheet(
-                f"{self.data_dir}/raw/economic_indicators.xlsx", 3
+                f"{self.saving_dir}raw/economic_indicators.xlsx", 3
             )
 
             for sheet in range(4, 20):
                 df = self.process_sheet(
-                    f"{self.data_dir}/raw/economic_indicators.xlsx", sheet
+                    f"{self.saving_dir}raw/economic_indicators.xlsx", sheet
                 )
                 jp_df = jp_df.join(df, on=["date"], how="left", validate="1:1")
 
@@ -439,11 +99,6 @@ class DataIndex(DataPull):
             return self.conn.sql("SELECT * FROM 'indicatorstable';").pl()
         else:
             return self.conn.sql("SELECT * FROM 'indicatorstable';").pl()
-
-    def jp_index_data(self, agg: str) -> pl.DataFrame:
-        df = self.process_jp_index()
-        variables = df.columns
-        remove = ["id", "date"]
 
     def process_sheet(self, file_path: str, sheet_id: int) -> pl.DataFrame:
         """
@@ -610,30 +265,3 @@ class DataIndex(DataPull):
 
             clean_df = pl.concat([clean_df, tmp], how="vertical")
         return clean_df
-
-    def process_activity(self, update: bool = False) -> pl.DataFrame:
-        if not os.path.exists(f"{self.data_dir}/raw/activity.xls") or update:
-            self.pull_consumer(f"{self.data_dir}/raw/activity.xls")
-        if (
-            "activitytable" not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
-            or not self.conn.sql(f"SELECT COUNT(*) FROM activitytable").fetchone()[0]
-            or update
-        ):
-            init_activity_table(self.data_file)
-
-            df = pl.read_excel(f"{self.data_dir}/raw/activity.xls", sheet_id=3)
-            df = df.select(pl.nth(0), pl.nth(1))
-            df = df.filter(
-                (pl.nth(0).str.strip_chars().str.len_chars() <= 8)
-                & (pl.nth(0).str.strip_chars().str.len_chars() >= 6)
-            )
-            df = df.with_columns(pl.nth(0).str.to_lowercase())
-            df = df.with_columns(date=pl.nth(0).str.replace("m", "-") + "-01")
-            df = df.select(
-                date=pl.col("date").str.to_datetime(), index=pl.nth(1).cast(pl.Float64)
-            )
-            self.conn.sql("INSERT INTO 'activitytable' BY NAME SELECT * FROM df;")
-
-            return self.conn.sql("SELECT * FROM 'activitytable';").pl()
-        else:
-            return self.conn.sql("SELECT * FROM 'activitytable';").pl()

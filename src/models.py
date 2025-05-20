@@ -8,15 +8,11 @@ def get_conn(db_path: str) -> duckdb.DuckDBPyConnection:
 def init_indicators_table(db_path: str) -> None:
     conn = get_conn(db_path=db_path)
 
-    # Create sequence for primary key
-    conn.sql("DROP SEQUENCE IF EXISTS indicators_sequence;")
-    conn.sql("CREATE SEQUENCE indicators_sequence START 1;")
 
     # Create Indicators table
     conn.sql(
         """
         CREATE TABLE IF NOT EXISTS "indicatorstable" (
-            id INTEGER PRIMARY KEY DEFAULT nextval('indicators_sequence'),
             date TEXT,
             indice_de_actividad_economica FLOAT,
             encuesta_de_grupo_trabajador_ajustada_estacionalmente FLOAT,
@@ -43,15 +39,10 @@ def init_indicators_table(db_path: str) -> None:
 def init_consumer_table(db_path: str) -> None:
     conn = get_conn(db_path=db_path)
 
-    # Create sequence for primary key
-    conn.sql("DROP SEQUENCE IF EXISTS consumer_sequence;")
-    conn.sql("CREATE SEQUENCE consumer_sequence START 1;")
-
     # Create Consumer table
     conn.sql(
         """
         CREATE TABLE IF NOT EXISTS "consumertable" (
-            id INTEGER PRIMARY KEY DEFAULT nextval('consumer_sequence'),
             date DATETIME,
             year INTEGER,
             month INTEGER,
@@ -143,15 +134,10 @@ def init_consumer_table(db_path: str) -> None:
 def init_activity_table(db_path: str) -> None:
     conn = get_conn(db_path=db_path)
 
-    # Create sequence for primary key
-    conn.sql("DROP SEQUENCE IF EXISTS activity_sequence;")
-    conn.sql("CREATE SEQUENCE activity_sequence START 1;")
-
     # Create Indicators table
     conn.sql(
         """
         CREATE TABLE IF NOT EXISTS "activitytable" (
-            id INTEGER PRIMARY KEY DEFAULT nextval('activity_sequence'),
             date DATETIME,
             index FLOAT
         );
