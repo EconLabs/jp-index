@@ -1,20 +1,54 @@
-from tqdm import tqdm
 import logging
-from urllib3.util.retry import Retry
-from requests.adapters import HTTPAdapter
-import requests
 import os
 import zipfile
+from datetime import datetime
+
 import polars as pl
+import polars.selectors as cs
+import requests
+from requests.adapters import HTTPAdapter
+from tqdm import tqdm
+from urllib3.util.retry import Retry
+
 from ..models import (
     get_conn,
     init_activity_table,
     init_awards_table,
     init_consumer_table,
+    init_indicators_table,
 )
 
 
 class DataPull:
+    """
+    Initialize the DataPull class, setting up directory paths, database connection,
+    and logging configuration.
+
+    Parameters
+    ----------
+    saving_dir: str, optional, default="data/"
+        The directory where data will be saved. It creates subdirectories for raw,
+        processed, and external data.
+
+    database_file: str, optional, default="data.ddb"
+        The file path for the DuckDB database instance.
+
+    log_file: str, optional, default="data_process.log"
+        The file path where log messages will be saved.
+
+    Returns
+    -------
+    None
+        Initializes the object without returning anything.
+
+    Side Effects
+    ------------
+    - Creates subdirectories for "raw", "processed", and "external" within the specified
+      saving directory if they do not already exist.
+    - Sets up a logging configuration that writes logs to the specified log file.
+    - Establishes a connection to the DuckDB database file.
+    """
+
     def __init__(
         self,
         saving_dir: str = "data/",
@@ -41,15 +75,34 @@ class DataPull:
 
     def insert_consumer(self, update: bool = False) -> pl.DataFrame:
         """
+        Insert or update consumer data from an Excel file into the consumer table in the database.
+
         Parameters
         ----------
-        update : bool
-            Whether to update the data. Defaults to False.
+        update: bool, optional, default=False
+            Whether to force an update by pulling new data, even if the file already exists.
+            If set to True, the consumer data will be pulled again regardless of the current file.
 
         Returns
         -------
         pl.DataFrame
+            A Polars DataFrame containing the consumer data after insertion or update.
+
+        Side Effects
+        ------------
+        - Pulls consumer data from an Excel file (`consumer.xls`) located in the 'raw' subdirectory if
+          the file doesn't exist or if `update` is set to True.
+        - Renames columns and transforms the data, including parsing and formatting the 'descripcion' field
+          into a date and splitting it into year and month.
+        - Adds additional columns for 'quarter' and 'fiscal' periods based on the date.
+        - Inserts new data into the consumer table or returns the existing data from the table.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the consumer Excel file is missing and `update` is set to False.
         """
+
         if not os.path.exists(f"{self.saving_dir}raw/consumer.xls") or update:
             self.pull_consumer(f"{self.saving_dir}raw/consumer.xls")
         if (
@@ -220,6 +273,33 @@ class DataPull:
             return self.conn.sql("SELECT * FROM 'consumertable';").pl()
 
     def insert_activity(self, update: bool = False) -> pl.DataFrame:
+        """
+        Insert or update the activity data from an Excel file into the activity table in the database.
+
+        Parameters
+        ----------
+        update: bool, optional, default=False
+            Whether to force an update by pulling new data, even if the file already exists.
+            If set to True, the activity data will be pulled again regardless of the current file.
+
+        Returns
+        -------
+        pl.DataFrame
+            A Polars DataFrame containing the activity data after insertion or update.
+
+        Side Effects
+        ------------
+        - Pulls activity data from an Excel file (`activity.xls`) located in the 'raw' subdirectory if
+          the file doesn't exist or if `update` is set to True.
+        - Initializes the activity table in the database if it does not already exist.
+        - Inserts new data into the activity table or returns the existing data from the table.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the activity Excel file is missing and `update` is set to False.
+        """
+
         if not os.path.exists(f"{self.saving_dir}raw/activity.xls") or update:
             self.pull_consumer(f"{self.saving_dir}raw/activity.xls")
         if (
@@ -248,18 +328,28 @@ class DataPull:
 
     def clean_name(self, name: str) -> str:
         """
-        Cleans the name of a column by converting it to lowercase, removing special characters,
-        and replacing accented characters with their non-accented counterparts.
+        Cleans and standardizes a string by converting it to lowercase, removing unwanted characters,
+        and replacing accented characters with their non-accented equivalents.
 
         Parameters
         ----------
-        name : str
+        name: str
+            The input string that needs to be cleaned and standardized.
 
         Returns
         -------
         str
+            The cleaned and standardized string with the following transformations:
+            - Converted to lowercase
+            - Whitespaces replaced with underscores
+            - Special characters like dashes, equals signs, asterisks, commas, parentheses, and accents are removed or replaced.
 
+        Example
+        -------
+        >>> clean_name("José-Álvaro (example)=name*")
+        "jose_alvaro_example_name"
         """
+
         cleaned = name.lower().strip()
         cleaned = cleaned.replace("-", " ").replace("=", "")
         cleaned = cleaned.replace("  ", "_").replace(" ", "_")
@@ -270,10 +360,6 @@ class DataPull:
         for old, new in replacements.items():
             cleaned = cleaned.replace(old, new)
         return cleaned
-
-    def pull_economic_indicators(self, file_path: str) -> None:
-        url = "https://jp.pr.gov/wp-content/uploads/2024/09/Indicadores_Economicos_9.13.2024.xlsx"
-        self.pull_file(url, file_path)
 
     def clean_awards_by_year(self, fiscal_year: int) -> pl.DataFrame:
         empty_df = [
@@ -704,6 +790,37 @@ class DataPull:
         return self.conn.sql("SELECT * FROM 'AwardTable';").pl()
 
     def pull_consumer(self, file_path: str):
+        """
+        Downloads a file from a specific URL using a POST request to simulate a form submission.
+
+        This method handles retries on failures, logs the progress of the download, and saves the file
+        to the specified path. It uses a session with custom headers and form data to ensure the correct
+        interaction with the target website, including handling the `__VIEWSTATE` and other form parameters.
+
+        Parameters:
+        ----------
+        file_path : str
+            The local path (including the filename) where the downloaded file will be saved.
+            If the directory doesn't exist, the function will log an error.
+
+        Returns:
+        -------
+        None
+
+        Side Effects:
+        --------------
+        - Logs the download progress using `tqdm`.
+        - Logs a message indicating success or failure of the download.
+        - In case of failure, logs the HTTP status code or exception encountered.
+
+        Exceptions:
+        -----------
+        - Raises `requests.exceptions.RequestException` if there is an issue with the HTTP request.
+
+        Example:
+        --------
+        pull_consumer("path/to/save/file.zip")
+        """
         session = requests.Session()
         retry = Retry(
             total=5,  # Number of retries
@@ -770,11 +887,73 @@ class DataPull:
             logging.error(f"Failed to download file: {response.status_code}")
 
     def pull_activity(self, file_path: str):
+        """
+        Downloads an Excel file containing activity data from a specific URL.
+
+        This method calls the `pull_file` method to download the file from the given URL and saves
+        it to the specified file path. After the download completes, a log message is generated
+        confirming the file's location.
+
+        Parameters:
+        ----------
+        file_path : str
+            The local path (including the filename) where the downloaded file will be saved.
+            If the directory doesn't exist, it should be handled before calling the method.
+
+        Returns:
+        -------
+        None
+
+        Side Effects:
+        --------------
+        - Calls the `pull_file` method to perform the actual download.
+        - Logs the download progress via `logging.info()` upon successful completion.
+
+        Example:
+        --------
+        pull_activity("path/to/save/activity_data.xls")
+        """
         url = "https://www.bde.pr.gov/BDE/PREDDOCS/I_EAI.XLS"
         self.pull_file(url, file_path)
         logging.info(f"Downloaded file to {file_path}")
 
     def pull_file(self, url: str, filename: str, verify: bool = True) -> None:
+        """
+        Downloads a file from a specified URL and saves it to the given local filename.
+
+        This method streams the file from the provided URL, writes it to the local file,
+        and shows a progress bar using the `tqdm` library to track download progress.
+        If the file already exists at the given location, the download is skipped.
+
+        Parameters:
+        ----------
+        url : str
+            The URL from which the file will be downloaded.
+
+        filename : str
+            The local path (including the filename) where the downloaded file will be saved.
+            If the file already exists, the download is skipped.
+
+        verify : bool, optional, default=True
+            Whether to verify the SSL certificate of the remote server.
+            If set to False, the SSL certificate validation will be skipped.
+            This is useful when downloading from servers with invalid or self-signed certificates.
+
+        Returns:
+        -------
+        None
+
+        Side Effects:
+        --------------
+        - Downloads the file from the specified URL.
+        - Saves the file to the given filename.
+        - Logs an info message when the download is either skipped or successfully completed.
+        - Displays a progress bar during the download.
+
+        Example:
+        --------
+        pull_file("https://example.com/data.zip", "local_data.zip")
+        """
         if os.path.exists(filename):
             logging.info(f"File {filename} already exists, skipping download")
         else:
@@ -798,3 +977,230 @@ class DataPull:
                                     len(chunk)
                                 )  # Update the progress bar with the size of the chunk
                 logging.info(f"Downloaded {filename}")
+
+    def insert_jp_index(self, update: bool = False) -> pl.DataFrame:
+        """
+        Processes the economic indicators data and stores it in the database.
+        If the data does not exist, it will pull the data from the source.
+
+        Parameters
+        ----------
+        update : bool
+            Whether to update the data. Defaults to False.
+
+        Returns
+        -------
+        pl.DataFrame
+        """
+
+        if (
+            not os.path.exists(f"{self.saving_dir}raw/economic_indicators.xlsx")
+            or update
+        ):
+            url = "https://jp.pr.gov/wp-content/uploads/2024/09/Indicadores_Economicos_9.13.2024.xlsx"
+            self.pull_file(url, f"{self.saving_dir}raw/economic_indicators.xlsx")
+        if (
+            "indicatorstable"
+            not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
+        ):
+            init_indicators_table(self.data_file)
+        if self.conn.sql("SELECT * FROM 'indicatorstable';").df().empty:
+            jp_df = self.process_sheet(
+                f"{self.saving_dir}raw/economic_indicators.xlsx", 3
+            )
+
+            for sheet in range(4, 20):
+                df = self.process_sheet(
+                    f"{self.saving_dir}raw/economic_indicators.xlsx", sheet
+                )
+                jp_df = jp_df.join(df, on=["date"], how="left", validate="1:1")
+
+            jp_df = jp_df.with_columns(
+                year=pl.col("date").dt.year(), month=pl.col("date").dt.month()
+            )
+            jp_df = jp_df.with_columns(
+                pl.when((pl.col("month") >= 1) & (pl.col("month") <= 3))
+                .then(1)
+                .when((pl.col("month") >= 4) & (pl.col("month") <= 6))
+                .then(2)
+                .when((pl.col("month") >= 7) & (pl.col("month") <= 9))
+                .then(3)
+                .when((pl.col("month") >= 10) & (pl.col("month") <= 12))
+                .then(4)
+                .otherwise(0)
+                .alias("quarter"),
+                pl.when(pl.col("month") > 6)
+                .then(pl.col("year") + 1)
+                .otherwise(pl.col("year"))
+                .alias("fiscal"),
+            )
+            self.conn.sql("INSERT INTO 'indicatorstable' BY NAME SELECT * FROM jp_df;")
+            return self.conn.sql("SELECT * FROM 'indicatorstable';").pl()
+        else:
+            return self.conn.sql("SELECT * FROM 'indicatorstable';").pl()
+
+    def process_sheet(self, file_path: str, sheet_id: int) -> pl.DataFrame:
+        """
+        Processes a sheet from the economic indicators data and returns a DataFrame
+
+        Parameters
+        ----------
+        file_path : str
+            The path to the Excel file
+
+        sheet_id : int
+            The sheet ID to process
+
+        Returns
+        -------
+        pl.DataFrame
+        """
+        df = pl.read_excel(file_path, sheet_id=sheet_id)
+        months = [
+            "Enero",
+            "Febrero",
+            "Marzo",
+            "Abril",
+            "Mayo",
+            "Junio",
+            "Julio",
+            "Agosto",
+            "Septiembre",
+            "Octubre",
+            "Noviembre",
+            "Diciembre",
+            "Meses",
+        ]
+        col_name = self.clean_name(df.columns[1])
+
+        df = df.filter(pl.nth(1).is_in(months)).drop(cs.first()).head(13)
+        columns = df.head(1).with_columns(pl.all()).cast(pl.String).to_dicts().pop()
+        for item in columns:
+            if columns[item] == "Meses":
+                continue
+            elif columns[item] is None:
+                df = df.drop(item)
+            elif (
+                float(columns[item]) < 2000
+                or float(columns[item]) > datetime.now().year + 1
+            ):
+                df = df.drop(item)
+
+        if len(df.columns) > (datetime.now().year - 1997):
+            df = df.select(pl.nth(range(0, len(df.columns) // 2)))
+
+        df = df.rename(
+            df.head(1)
+            .with_columns(pl.nth(range(1, len(df.columns))).cast(pl.Int64))
+            .cast(pl.String)
+            .to_dicts()
+            .pop()
+        ).tail(-1)
+        df = df.with_columns(pl.col("Meses").str.to_lowercase()).cast(pl.String)
+        df = self.process_panel(df, col_name)
+
+        return df
+
+    def process_panel(self, df: pl.DataFrame, col_name: str) -> pl.DataFrame:
+        """
+        Processes the data and turns it into a panel DataFrame
+
+        Parameters
+        ----------
+        df : pl.DataFrame
+            The DataFrame to process
+        col_name : str
+            The name of the column to process
+
+        Returns
+        -------
+        pl.DataFrame
+        """
+        empty_df = [
+            pl.Series("date", [], dtype=pl.Datetime),
+            pl.Series(col_name, [], dtype=pl.Float64),
+        ]
+        clean_df = pl.DataFrame(empty_df)
+
+        for column in df.columns:
+            if column == "Meses":
+                continue
+            column_name = col_name
+            # Create a temporary DataFrame
+            tmp = df
+            tmp = tmp.rename({column: column_name})
+            tmp = tmp.with_columns(
+                Meses=pl.col("Meses").str.strip_chars().str.to_lowercase()
+            )
+            tmp = tmp.with_columns(
+                pl.when(pl.col("Meses") == "enero")
+                .then(1)
+                .when(pl.col("Meses") == "febrero")
+                .then(2)
+                .when(pl.col("Meses") == "marzo")
+                .then(3)
+                .when(pl.col("Meses") == "abril")
+                .then(4)
+                .when(pl.col("Meses") == "mayo")
+                .then(5)
+                .when(pl.col("Meses") == "junio")
+                .then(6)
+                .when(pl.col("Meses") == "julio")
+                .then(7)
+                .when(pl.col("Meses") == "agosto")
+                .then(8)
+                .when(pl.col("Meses") == "septiembre")
+                .then(9)
+                .when(pl.col("Meses") == "octubre")
+                .then(10)
+                .when(pl.col("Meses") == "noviembre")
+                .then(11)
+                .when(pl.col("Meses") == "diciembre")
+                .then(12)
+                .alias("month")
+            )
+            tmp = tmp.with_columns(
+                (
+                    pl.col(column_name)
+                    .str.replace_all("$", "", literal=True)
+                    .str.replace_all("(", "", literal=True)
+                    .str.replace_all(")", "", literal=True)
+                    .str.replace_all(",", "")
+                    .str.replace_all("-", "")
+                    .str.strip_chars()
+                    .alias(column_name)
+                )
+            )
+            tmp = tmp.with_columns(
+                pl.when(pl.col(column_name) == "n/d")
+                .then(None)
+                .when(pl.col(column_name) == "**")
+                .then(None)
+                .when(pl.col(column_name) == "-")
+                .then(None)
+                .when(pl.col(column_name) == "no disponible")
+                .then(None)
+                .otherwise(pl.col(column_name))
+                .alias(column_name)
+            )
+            tmp = tmp.select(
+                pl.col("month").cast(pl.Int64).alias("month"),
+                pl.lit(int(column)).cast(pl.Int64).alias("year"),
+                pl.col(column_name).cast(pl.Float64).alias(column_name),
+            )
+
+            tmp = tmp.with_columns(
+                (
+                    pl.col("year").cast(pl.String)
+                    + "-"
+                    + pl.col("month").cast(pl.String)
+                    + "-01"
+                ).alias("date")
+            )
+            tmp = tmp.select(
+                pl.col("date").str.to_datetime("%Y-%m-%d").alias("date"),
+                pl.col(column_name).alias(column_name),
+            )
+
+            clean_df = pl.concat([clean_df, tmp], how="vertical")
+        return clean_df
