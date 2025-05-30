@@ -73,7 +73,7 @@ class DataIndex(DataPull):
             case _:
                 raise ValueError("Invalid aggregation")
 
-    def jp_consumer_data(self, time_frame: str) -> pl.DataFrame:
+    def jp_indicator_data(self, time_frame: str) -> pl.DataFrame:
         """
         Aggregate consumer data based on the specified time frame.
 
