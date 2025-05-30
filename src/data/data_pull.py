@@ -1,16 +1,21 @@
-from tqdm import tqdm
 import logging
-from urllib3.util.retry import Retry
-from requests.adapters import HTTPAdapter
-import requests
 import os
 import zipfile
+from datetime import datetime
+
 import polars as pl
+import polars.selectors as cs
+import requests
+from requests.adapters import HTTPAdapter
+from tqdm import tqdm
+from urllib3.util.retry import Retry
+
 from ..models import (
     get_conn,
     init_activity_table,
     init_awards_table,
     init_consumer_table,
+    init_indicators_table,
 )
 
 

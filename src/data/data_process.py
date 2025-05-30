@@ -1,9 +1,6 @@
-from .data_pull import DataPull
-from datetime import datetime
-import polars.selectors as cs
 import polars as pl
-import os
-from ..models import init_indicators_table
+
+from .data_pull import DataPull
 
 
 class DataIndex(DataPull):
@@ -78,4 +75,3 @@ class DataIndex(DataPull):
 
     def jp_consumer_data(self, time_frame: str) -> pl.DataFrame:
         pass
-
