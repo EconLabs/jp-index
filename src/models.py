@@ -13,7 +13,11 @@ def init_indicators_table(db_path: str) -> None:
     conn.sql(
         """
         CREATE TABLE IF NOT EXISTS "indicatorstable" (
-            date TEXT,
+            date DATE,
+            fiscal INTEGER,
+            year INTEGER,
+            month INTEGER,
+            quarter INTEGER,
             indice_de_actividad_economica FLOAT,
             encuesta_de_grupo_trabajador_ajustada_estacionalmente FLOAT,
             encuesta_de_grupo_trabajador FLOAT,

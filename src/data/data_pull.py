@@ -1015,6 +1015,25 @@ class DataPull:
                 )
                 jp_df = jp_df.join(df, on=["date"], how="left", validate="1:1")
 
+            jp_df = jp_df.with_columns(
+                year=pl.col("date").dt.year(), month=pl.col("date").dt.month()
+            )
+            jp_df = jp_df.with_columns(
+                pl.when((pl.col("month") >= 1) & (pl.col("month") <= 3))
+                .then(1)
+                .when((pl.col("month") >= 4) & (pl.col("month") <= 6))
+                .then(2)
+                .when((pl.col("month") >= 7) & (pl.col("month") <= 9))
+                .then(3)
+                .when((pl.col("month") >= 10) & (pl.col("month") <= 12))
+                .then(4)
+                .otherwise(0)
+                .alias("quarter"),
+                pl.when(pl.col("month") > 6)
+                .then(pl.col("year") + 1)
+                .otherwise(pl.col("year"))
+                .alias("fiscal"),
+            )
             self.conn.sql("INSERT INTO 'indicatorstable' BY NAME SELECT * FROM jp_df;")
             return self.conn.sql("SELECT * FROM 'indicatorstable';").pl()
         else:
