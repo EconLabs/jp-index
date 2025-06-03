@@ -10,12 +10,15 @@ from requests.adapters import HTTPAdapter
 from tqdm import tqdm
 from urllib3.util.retry import Retry
 
+import pandas as pd
+import re
 from ..models import (
     get_conn,
     init_activity_table,
     init_awards_table,
     init_consumer_table,
     init_indicators_table,
+    init_energy_table,
 )
 
 
@@ -789,6 +792,91 @@ class DataPull:
             return self.conn.sql("SELECT * FROM 'AwardTable';").pl()
         return self.conn.sql("SELECT * FROM 'AwardTable';").pl()
 
+    def clean_energy_df(self) -> pl.DataFrame:
+        input_csv_path = "/home/juan/jp-index/data/raw/aee-meta-ultimo.csv"
+        text_col       = "mes"
+        pdf = pd.read_csv(input_csv_path, encoding="latin1", dtype=str)
+
+        def clean_name(col: str) -> str:
+            col = col.lower()
+            col = re.sub(r"\s+", " ", col)
+            col = col.replace("/", "_")
+            for old, new in [
+                ("(", ""), (")", ""),
+                ("$", "dollar"), ("¢", "cent"),
+                ("#", "amount"), ("%", "porcentage"),
+                ("ó", "o"), ("á", "a"), ("é", "e"), ("í", "i"), ("ú", "u"),
+            ]:
+                col = col.replace(old, new)
+            col = col.replace("-", "_").replace(" ", "_")
+            col = re.sub(r"_+", "_", col)
+            return col.strip("_")
+
+        orig_cols    = pdf.columns.to_list()
+        cleaned_cols = [clean_name(c) for c in orig_cols]
+        pdf.columns  = cleaned_cols
+
+        df = pl.from_pandas(pdf)
+        exprs = []
+        cols_to_process = list(df.columns[:-1])
+
+        for col in cols_to_process:
+            cleaned = (
+                pl.col(col)
+                    .str.replace_all(",", "")
+                    .str.replace_all(r"^\s+|\s+$", "")
+            )
+            if col == text_col:
+                expr = (
+                    pl.when(cleaned.is_in(["", "-", None]))
+                        .then(None)
+                        .otherwise(cleaned)
+                ).alias(col)
+            else:
+                expr = (
+                    pl.when(cleaned.is_in(["", "-", None]))
+                        .then(None)
+                        .otherwise(cleaned)
+                ).cast(pl.Float64).alias(col)
+            exprs.append(expr)
+
+        df_clean = df.select(exprs)
+
+        return df_clean
+
+
+    def insert_energy_data(self):
+        existing = (
+            self.conn
+                .sql("SHOW TABLES;")
+                .df()
+                .get("name")
+                .tolist()
+        )
+        if "EnergyTable" not in existing:
+            init_energy_table(self.data_file)
+
+        try:
+            count = self.conn \
+                            .sql("SELECT COUNT(*) FROM EnergyTable;") \
+                            .fetchone()[0]
+            if count == 0:
+                df_clean = self.clean_energy_df()
+                self.conn.register("tmp_energy", df_clean)
+                self.conn.execute("""
+                    INSERT INTO EnergyTable
+                    SELECT * FROM tmp_energy;
+                """)
+                logging.info("Inserted cleaned energy data into EnergyTable (via Polars in RAM).")
+            else:
+                logging.info("EnergyTable already contains data; skipping load.")
+        except Exception as e:
+            logging.error(f"Error inserting energy data: {e}")
+            return self.conn.sql("SELECT * FROM EnergyTable;").pl()
+
+        return self.conn.sql("SELECT * FROM EnergyTable;").pl()
+
+
     def pull_consumer(self, file_path: str):
         """
         Downloads a file from a specific URL using a POST request to simulate a form submission.
@@ -1204,3 +1292,236 @@ class DataPull:
 
             clean_df = pl.concat([clean_df, tmp], how="vertical")
         return clean_df
+
+    def insert_jp_index(self, update: bool = False) -> pl.DataFrame:
+        """
+        Processes the economic indicators data and stores it in the database.
+        If the data does not exist, it will pull the data from the source.
+
+        Parameters
+        ----------
+        update : bool
+            Whether to update the data. Defaults to False.
+
+        Returns
+        -------
+        pl.DataFrame
+        """
+
+        if (
+            not os.path.exists(f"{self.saving_dir}raw/economic_indicators.xlsx")
+            or update
+        ):
+            url = "https://jp.pr.gov/wp-content/uploads/2024/09/Indicadores_Economicos_9.13.2024.xlsx"
+            self.pull_file(url, f"{self.saving_dir}raw/economic_indicators.xlsx")
+        if (
+            "indicatorstable"
+            not in self.conn.sql("SHOW TABLES;").df().get("name").tolist()
+        ):
+            init_indicators_table(self.data_file)
+        if self.conn.sql("SELECT * FROM 'indicatorstable';").df().empty:
+            jp_df = self.process_sheet(
+                f"{self.saving_dir}raw/economic_indicators.xlsx", 3
+            )
+
+            for sheet in range(4, 20):
+                df = self.process_sheet(
+                    f"{self.saving_dir}raw/economic_indicators.xlsx", sheet
+                )
+                jp_df = jp_df.join(df, on=["date"], how="left", validate="1:1")
+
+            jp_df = jp_df.with_columns(
+                year=pl.col("date").dt.year(), month=pl.col("date").dt.month()
+            )
+            jp_df = jp_df.with_columns(
+                pl.when((pl.col("month") >= 1) & (pl.col("month") <= 3))
+                .then(1)
+                .when((pl.col("month") >= 4) & (pl.col("month") <= 6))
+                .then(2)
+                .when((pl.col("month") >= 7) & (pl.col("month") <= 9))
+                .then(3)
+                .when((pl.col("month") >= 10) & (pl.col("month") <= 12))
+                .then(4)
+                .otherwise(0)
+                .alias("quarter"),
+                pl.when(pl.col("month") > 6)
+                .then(pl.col("year") + 1)
+                .otherwise(pl.col("year"))
+                .alias("fiscal"),
+            )
+            self.conn.sql("INSERT INTO 'indicatorstable' BY NAME SELECT * FROM jp_df;")
+            return self.conn.sql("SELECT * FROM 'indicatorstable';").pl()
+        else:
+            return self.conn.sql("SELECT * FROM 'indicatorstable';").pl()
+
+    def process_sheet(self, file_path: str, sheet_id: int) -> pl.DataFrame:
+        """
+        Processes a sheet from the economic indicators data and returns a DataFrame
+
+        Parameters
+        ----------
+        file_path : str
+            The path to the Excel file
+
+        sheet_id : int
+            The sheet ID to process
+
+        Returns
+        -------
+        pl.DataFrame
+        """
+        df = pl.read_excel(file_path, sheet_id=sheet_id)
+        months = [
+            "Enero",
+            "Febrero",
+            "Marzo",
+            "Abril",
+            "Mayo",
+            "Junio",
+            "Julio",
+            "Agosto",
+            "Septiembre",
+            "Octubre",
+            "Noviembre",
+            "Diciembre",
+            "Meses",
+        ]
+        col_name = self.clean_name(df.columns[1])
+
+        df = df.filter(pl.nth(1).is_in(months)).drop(cs.first()).head(13)
+        columns = df.head(1).with_columns(pl.all()).cast(pl.String).to_dicts().pop()
+        for item in columns:
+            if columns[item] == "Meses":
+                continue
+            elif columns[item] is None:
+                df = df.drop(item)
+            elif (
+                float(columns[item]) < 2000
+                or float(columns[item]) > datetime.now().year + 1
+            ):
+                df = df.drop(item)
+
+        if len(df.columns) > (datetime.now().year - 1997):
+            df = df.select(pl.nth(range(0, len(df.columns) // 2)))
+
+        df = df.rename(
+            df.head(1)
+            .with_columns(pl.nth(range(1, len(df.columns))).cast(pl.Int64))
+            .cast(pl.String)
+            .to_dicts()
+            .pop()
+        ).tail(-1)
+        df = df.with_columns(pl.col("Meses").str.to_lowercase()).cast(pl.String)
+        df = self.process_panel(df, col_name)
+
+        return df
+
+    def process_panel(self, df: pl.DataFrame, col_name: str) -> pl.DataFrame:
+        """
+        Processes the data and turns it into a panel DataFrame
+
+        Parameters
+        ----------
+        df : pl.DataFrame
+            The DataFrame to process
+        col_name : str
+            The name of the column to process
+
+        Returns
+        -------
+        pl.DataFrame
+        """
+        empty_df = [
+            pl.Series("date", [], dtype=pl.Datetime),
+            pl.Series(col_name, [], dtype=pl.Float64),
+        ]
+        clean_df = pl.DataFrame(empty_df)
+
+        for column in df.columns:
+            if column == "Meses":
+                continue
+            column_name = col_name
+            # Create a temporary DataFrame
+            tmp = df
+            tmp = tmp.rename({column: column_name})
+            tmp = tmp.with_columns(
+                Meses=pl.col("Meses").str.strip_chars().str.to_lowercase()
+            )
+            tmp = tmp.with_columns(
+                pl.when(pl.col("Meses") == "enero")
+                .then(1)
+                .when(pl.col("Meses") == "febrero")
+                .then(2)
+                .when(pl.col("Meses") == "marzo")
+                .then(3)
+                .when(pl.col("Meses") == "abril")
+                .then(4)
+                .when(pl.col("Meses") == "mayo")
+                .then(5)
+                .when(pl.col("Meses") == "junio")
+                .then(6)
+                .when(pl.col("Meses") == "julio")
+                .then(7)
+                .when(pl.col("Meses") == "agosto")
+                .then(8)
+                .when(pl.col("Meses") == "septiembre")
+                .then(9)
+                .when(pl.col("Meses") == "octubre")
+                .then(10)
+                .when(pl.col("Meses") == "noviembre")
+                .then(11)
+                .when(pl.col("Meses") == "diciembre")
+                .then(12)
+                .alias("month")
+            )
+            tmp = tmp.with_columns(
+                (
+                    pl.col(column_name)
+                    .str.replace_all("$", "", literal=True)
+                    .str.replace_all("(", "", literal=True)
+                    .str.replace_all(")", "", literal=True)
+                    .str.replace_all(",", "")
+                    .str.replace_all("-", "")
+                    .str.strip_chars()
+                    .alias(column_name)
+                )
+            )
+            tmp = tmp.with_columns(
+                pl.when(pl.col(column_name) == "n/d")
+                .then(None)
+                .when(pl.col(column_name) == "**")
+                .then(None)
+                .when(pl.col(column_name) == "-")
+                .then(None)
+                .when(pl.col(column_name) == "no disponible")
+                .then(None)
+                .otherwise(pl.col(column_name))
+                .alias(column_name)
+            )
+            tmp = tmp.select(
+                pl.col("month").cast(pl.Int64).alias("month"),
+                pl.lit(int(column)).cast(pl.Int64).alias("year"),
+                pl.col(column_name).cast(pl.Float64).alias(column_name),
+            )
+
+            tmp = tmp.with_columns(
+                (
+                    pl.col("year").cast(pl.String)
+                    + "-"
+                    + pl.col("month").cast(pl.String)
+                    + "-01"
+                ).alias("date")
+            )
+            tmp = tmp.select(
+                pl.col("date").str.to_datetime("%Y-%m-%d").alias("date"),
+                pl.col(column_name).alias(column_name),
+            )
+
+            clean_df = pl.concat([clean_df, tmp], how="vertical")
+        return clean_df
+
+    def pull_energy_data(self):
+        url = "https://indicadores.pr/dataset/49746389-12ce-48f6-b578-65f6dc46f53f/resource/8025f821-45c1-4c6a-b2f4-8d641cc03df1/download/aee-meta-ultimo.csv"
+        file_path = "/home/juan/jp-index/data/raw/aee-meta-ultimo.csv"
+        self.pull_file(url, file_path, False)
+        logging.info(f"Downloaded file to {file_path}")
