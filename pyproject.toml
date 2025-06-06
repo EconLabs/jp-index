@@ -1,7 +1,7 @@
 [project]
 name = "jp-index"
 authors = [{ name = "Alejandro Ouslan", email = "alejandro.ouslan@upr.edu" }]
-version = "0.3.1"
+version = "0.4.1"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -15,6 +15,7 @@ dependencies = [
   "pyarrow>=17.0.0",
   "sqlmodel>=0.0.22",
   "tqdm>=4.67.1",
+  "altair>=5.5.0",
 ]
 
 [dependency-groups]

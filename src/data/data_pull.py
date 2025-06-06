@@ -793,7 +793,7 @@ class DataPull:
         return self.conn.sql("SELECT * FROM 'AwardTable';").pl()
 
     def clean_energy_df(self) -> pl.DataFrame:
-        input_csv_path = "/home/juan/jp-index/data/raw/aee-meta-ultimo.csv"
+        input_csv_path = f"{self.saving_dir}/raw/aee-meta-ultimo.csv"
         text_col       = "mes"
         pdf = pd.read_csv(input_csv_path, encoding="latin1", dtype=str)
 
@@ -1522,6 +1522,6 @@ class DataPull:
 
     def pull_energy_data(self):
         url = "https://indicadores.pr/dataset/49746389-12ce-48f6-b578-65f6dc46f53f/resource/8025f821-45c1-4c6a-b2f4-8d641cc03df1/download/aee-meta-ultimo.csv"
-        file_path = "/home/juan/jp-index/data/raw/aee-meta-ultimo.csv"
+        file_path = f"{self.saving_dir}/raw/aee-meta-ultimo.csv"
         self.pull_file(url, file_path, False)
         logging.info(f"Downloaded file to {file_path}")
