@@ -1,11 +1,9 @@
 import altair as alt
 from src.data.data_process import DataIndex
-import logging
-
 import pandas as pd
 import numpy as np
-from datetime import datetime
 import duckdb
+import polars as pl
 
 
 class DataGraph(DataIndex):
@@ -225,4 +223,67 @@ class DataGraph(DataIndex):
         )
 
         return chart
+    
+    def create_indicators_graph(self, time_frame: str) -> alt.Chart:
+        df = self.jp_indicator_data(time_frame)
+        df = df.fill_null(0).fill_nan(0)
+
+        exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
+
+        dropdown = alt.binding_select(
+            options=[col for col in df.columns if col not in exclude_columns],
+            name="Y-axis column",
+        )
+        ycol_param = alt.param(value="indice_de_actividad_economica", bind=dropdown)
+
+        if time_frame == "fiscal":
+            frequency = "fiscal"
+            df = df.sort(frequency)
+        elif time_frame == "yearly":
+            frequency = "year"
+            df = df.sort(frequency)
+        elif time_frame == "monthly":
+            frequency = "year_month"
+            df = df.with_columns(
+                (
+                    pl.col("year").cast(pl.Utf8) + "-" + pl.col("month").cast(pl.Utf8).str.zfill(2)
+                ).alias(frequency)
+            )
+            df = df.sort(frequency)
+        elif time_frame == "quarterly":
+            frequency = "year_quarter"
+            df = df.with_columns(
+                (
+                    pl.col("year").cast(pl.String) + "-q" + pl.col("quarter").cast(pl.String)
+                ).alias(frequency)
+            )
+            df = df.sort(frequency)
+
+        num_points = len(df[frequency].unique())
+        chart_width = max(600, num_points * 15)
+
+        chart = (
+            alt.Chart(df)
+            .mark_line()
+            .encode(
+                x=alt.X(f"{frequency}:N", title=""),
+                y=alt.Y("y:Q", title=f""),
+                tooltip=[
+                    alt.Tooltip(f"{frequency}:N", title="Periodo"),
+                    alt.Tooltip(f"y:Q",)
+                ]
+            )
+            .transform_calculate(y=f"datum[{ycol_param.name}]")
+            .add_params(ycol_param)
+            .properties(width=chart_width, padding={"top": 10, "bottom": 10, "left": 30})
+        ).configure_view(
+            fill='#e6f7ff'
+        ).configure_axis(
+            gridColor='white',
+            grid=True
+        )
+
+        return chart
+
+
 
