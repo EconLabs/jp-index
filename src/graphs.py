@@ -1,5 +1,5 @@
 import altair as alt
-from src.data.data_process import DataIndex
+from .data.data_process import DataIndex
 import pandas as pd
 import numpy as np
 import duckdb
