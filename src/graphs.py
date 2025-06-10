@@ -288,6 +288,72 @@ class DataGraph(DataIndex):
         )
 
         return chart
+    
+    def create_consumer_graph(self, time_frame: str) -> alt.Chart:
+        df = self.consumer_data(time_frame)
+        df = df.fill_null(0).fill_nan(0)
+
+        print(df.columns)
+        exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
+
+        dropdown = alt.binding_select(
+            options=[col for col in df.columns if col not in exclude_columns],
+            name="Y-axis column",
+        )
+        ycol_param = alt.param(value="ropa", bind=dropdown)
+
+        if time_frame == "fiscal":
+            frequency = "fiscal"
+            df = df.sort(frequency)
+        elif time_frame == "yearly":
+            frequency = "year"
+            df = df.sort(frequency)
+        elif time_frame == "monthly":
+            frequency = "year_month"
+            df = df.with_columns(
+                (
+                    pl.col("year").cast(pl.Utf8) + "-" + pl.col("month").cast(pl.Utf8).str.zfill(2)
+                ).alias(frequency)
+            )
+            df = df.sort(frequency)
+        elif time_frame == "quarterly":
+            frequency = "year_quarter"
+            df = df.with_columns(
+                (
+                    pl.col("year").cast(pl.String) + "-q" + pl.col("quarter").cast(pl.String)
+                ).alias(frequency)
+            )
+            df = df.sort(frequency)
+
+        num_points = len(df[frequency].unique())
+
+        if time_frame == "fiscal" or time_frame == "yearly":
+            chart_width = 'container'
+        else:
+            chart_width = max(600, num_points * 15)
+
+        chart = (
+            alt.Chart(df)
+            .mark_line()
+            .encode(
+                x=alt.X(f"{frequency}:N", title=""),
+                y=alt.Y("y:Q", title=f""),
+                tooltip=[
+                    alt.Tooltip(f"{frequency}:N", title="Periodo"),
+                    alt.Tooltip(f"y:Q",)
+                ]
+            )
+            .transform_calculate(y=f"datum[{ycol_param.name}]")
+            .add_params(ycol_param)
+            .properties(width=chart_width, padding={"top": 10, "bottom": 10, "left": 30})
+        ).configure_view(
+            fill='#e6f7ff'
+        ).configure_axis(
+            gridColor='white',
+            grid=True
+        )
+
+        return chart
 
 
 
