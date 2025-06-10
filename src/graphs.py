@@ -260,7 +260,11 @@ class DataGraph(DataIndex):
             df = df.sort(frequency)
 
         num_points = len(df[frequency].unique())
-        chart_width = max(600, num_points * 15)
+
+        if time_frame == "fiscal" or time_frame == "yearly":
+            chart_width = 'container'
+        else:
+            chart_width = max(600, num_points * 15)
 
         chart = (
             alt.Chart(df)
