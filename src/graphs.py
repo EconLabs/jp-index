@@ -186,7 +186,7 @@ class DataGraph(DataIndex):
 
         chart = (
             alt.Chart(df_plot)
-            .mark_line(point=True, color="#1f77b4")      # línea azul (ajusta el código)
+            .mark_line(point=True, color="#1f77b4")
             .encode(
                 x=x_encoding,
                 y=alt.Y(f"{metric}:Q",
@@ -202,8 +202,7 @@ class DataGraph(DataIndex):
                 height=300,
                 title=f"Evolución de {metric.replace('_',' ')} ({period.capitalize()})"
             )
-            # ----- colores de fondo / grilla -----
-            .configure_view(fill="#e6f7ff")              # fondo azul claro
+            .configure_view(fill="#e6f7ff")
             .configure_axis(gridColor="white", grid=True)
             .interactive(bind_y=False)
         )
