@@ -73,11 +73,7 @@ class DataGraph(DataIndex):
             period = 'time_period'
             sort_expr = 'x'
 
-        if type == 'monthly' or type == 'quarterly':
-            num_points = len(grouped_pd[period].unique())
-            chart_width = max(600, num_points * 15)
-        else:
-            chart_width = 'container'
+        chart_width = 'container'
 
         data_chart = alt.Chart(grouped_pd).mark_line().encode(
             x=alt.X(f'{period}:O', title=None, sort=sort_expr),
