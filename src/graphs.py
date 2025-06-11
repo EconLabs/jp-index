@@ -32,7 +32,11 @@ class DataGraph(DataIndex):
                 title=None,
                 scale=alt.Scale(type='sqrt'),
                 axis=None
-            )
+            ),
+            tooltip=[
+                alt.Tooltip("federal_action_obligation:Q", title="Periodo"),
+                alt.Tooltip(f"{category}:N", title=category)
+            ]
         )
 
         text = alt.Chart(grouped_pd).mark_text(
@@ -59,12 +63,16 @@ class DataGraph(DataIndex):
         else:
             sort_expr = 'x'
 
-        num_points = len(grouped_pd['time_period'].unique())
+        num_points = len(grouped_pd['parsed_period'].unique())
         chart_width = max(600, num_points * 15)
 
         data_chart = alt.Chart(grouped_pd).mark_line().encode(
-            x=alt.X('time_period:O', title=None, sort=sort_expr),
-            y=alt.Y('federal_action_obligation:Q', title=None)
+            x=alt.X('parsed_period:O', title=None, sort=sort_expr),
+            y=alt.Y('federal_action_obligation:Q', title=None),
+            tooltip=[
+                alt.Tooltip("parsed_period:O", title="Periodo"),
+                alt.Tooltip(f"federal_action_obligation:Q", title='federal_action_obligation')
+            ]
         ).properties(width=chart_width)
 
         return data_chart

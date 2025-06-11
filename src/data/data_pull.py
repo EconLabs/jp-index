@@ -1557,12 +1557,12 @@ class DataPull:
                     (pl.col("pr_fiscal_year")).cast(pl.String).alias("time_period")
                 )
                 grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
-            case 'year':
+            case 'yearly':
                 grouped_df = df.with_columns(
                     (pl.col("year")).cast(pl.String).alias("time_period")
                 )
                 grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
-            case 'quarter':
+            case 'quarterly':
                 quarter_expr = (
                     pl.when(pl.col("month").is_in([1, 2, 3])).then(pl.lit("q1"))
                     .when(pl.col("month").is_in([4, 5, 6])).then(pl.lit("q2"))
@@ -1574,7 +1574,7 @@ class DataPull:
                     (pl.col("year").cast(pl.String) + quarter_expr).alias("time_period")
                 )
                 grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
-            case 'month':
+            case 'monthly':
                 results = pl.DataFrame(schema={
                     "month_name": pl.String,
                     "awarding_agency_name": pl.String,
