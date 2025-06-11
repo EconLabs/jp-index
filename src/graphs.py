@@ -20,8 +20,8 @@ class DataGraph(DataIndex):
         else:
             return f"{sign}${abs_val:.0f}"
     
-    def create_spending_by_category_graph(self, year: int, quarter: int, month: int, type: str, category: str):
-        df = self.process_awards_by_category(year, quarter, month, type, category)
+    def create_spending_by_category_graph(self, dropdown: int, second_dropdown: int, type: str):
+        df = self.process_awards_by_category(dropdown, second_dropdown, type)
         grouped_pd = df.to_pandas()
         grouped_pd['formatted_text'] = grouped_pd["federal_action_obligation"].apply(self.format_money)
 
@@ -34,14 +34,14 @@ class DataGraph(DataIndex):
         ycol_param = alt.param(value="awarding_agency_name", bind=dropdown)
 
         chart = alt.Chart(grouped_pd).mark_bar().encode(
-            y=alt.Y(f'{category}:N', title=None, sort='-x'),
+            y=alt.Y(f'y:N', title=None, sort='-x'),
             x=alt.X(
                 'federal_action_obligation:Q', 
                 title=None,
                 scale=alt.Scale(type='sqrt'),
                 axis=None
             )
-        )
+        ).transform_calculate(y=f"datum[{ycol_param.name}]").add_params(ycol_param)
 
         text = alt.Chart(grouped_pd).mark_text(
             baseline='middle',
