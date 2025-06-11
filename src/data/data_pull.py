@@ -1544,7 +1544,7 @@ class DataPull:
         df = df.with_columns(
             pl.col("month").cast(pl.String).replace(month_map).alias("month_name").cast(pl.String),
             (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("pr_fiscal_year"),
-            pl.col('awarding_agency_name').str.to_lowercase()
+            pl.col('awarding_agency_name').str.to_lowercase().str.replace_all(" ", "_")
         )
         agency = agency.lower()
         type = type.lower()
