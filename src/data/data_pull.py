@@ -1625,18 +1625,18 @@ class DataPull:
         match type:
             case 'fiscal':
                 df_filtered = df.filter(pl.col("pr_fiscal_year") == year)
-            case 'year':
+            case 'yearly':
                 df_filtered = df.filter(pl.col("year") == year)
-            case 'month':
-                df_filtered = df.filter(pl.col("month") == month)
-            case 'quarter':
+            case 'monthly':
+                df_filtered = df.filter((pl.col("month") == month) & (pl.col("year") == year))
+            case 'quarterly':
                 quarter_to_calendar_month = {
                     1: [1, 2, 3], 
                     2: [4, 5, 6], 
                     3: [7, 8, 9],
                     4: [10, 11, 12]
                 }
-                df_filtered = df.filter(pl.col("month").is_in(quarter_to_calendar_month[quarter]))
+                df_filtered = df.filter((pl.col("month").is_in(quarter_to_calendar_month[quarter])) & (pl.col("year") == year))
         grouped_df = df_filtered.group_by([category]).agg(pl.col(agg_expr).sum())
 
         return grouped_df
