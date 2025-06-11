@@ -71,21 +71,6 @@ class DataGraph(DataIndex):
 
         return data_chart
     
-    
-
-    def format_money(self, val):
-        abs_val = abs(val)
-        sign = "-" if val < 0 else ""
-
-        if abs_val >= 1e9:
-            return f"{sign}${abs_val / 1e9:.1f}B"
-        elif abs_val >= 1e6:
-            return f"{sign}${abs_val / 1e6:.1f}M"
-        elif abs_val >= 1e3:
-            return f"{sign}${abs_val / 1e3:.1f}K"
-        else:
-            return f"{sign}${abs_val:.0f}"
-
     def _detect_unidad_y_formato(self, metric: str):
         metric_lower = metric.lower()
         if metric_lower.endswith("_mkwh"):
@@ -201,25 +186,25 @@ class DataGraph(DataIndex):
 
         chart = (
             alt.Chart(df_plot)
-               .mark_line(point=True)
-               .encode(
-                   x=x_encoding,
-                   y=alt.Y(
-                       f"{metric}:Q",
-                       title=y_title,
-                       axis=alt.Axis(format=y_format)
-                   ),
-                   tooltip=[
-                       alt.Tooltip("periodo:N", title="Periodo"),
-                       alt.Tooltip(f"{metric}:Q", title=y_title, format=y_format)
-                   ]
-               )
-               .properties(
-                   width=600,
-                   height=300,
-                   title=f"Evolución de {metric.replace('_',' ')} ({period.capitalize()})"
-               )
-               .interactive(bind_y=False) 
+            .mark_line(point=True, color="#1f77b4")
+            .encode(
+                x=x_encoding,
+                y=alt.Y(f"{metric}:Q",
+                        title=y_title,
+                        axis=alt.Axis(format=y_format)),
+                tooltip=[
+                    alt.Tooltip("periodo:N", title="Periodo"),
+                    alt.Tooltip(f"{metric}:Q", title=y_title, format=y_format)
+                ]
+            )
+            .properties(
+                width="container",
+                height=300,
+                title=f"Evolución de {metric.replace('_',' ')} ({period.capitalize()})"
+            )
+            .configure_view(fill="#e6f7ff")
+            .configure_axis(gridColor="white", grid=True)
+            .interactive(bind_y=False)
         )
 
         return chart
