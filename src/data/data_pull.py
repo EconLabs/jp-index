@@ -1528,6 +1528,7 @@ class DataPull:
 
     def process_awards_by_secter(self, type, agency):
         df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
+        agency_list = df.select("awarding_agency_name").unique().to_series().to_list()
 
         month_map = {
             1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 
@@ -1604,10 +1605,16 @@ class DataPull:
                     pl.col("time_period").str.strptime(pl.Date, "%Y%b", strict=False).dt.strftime("%Y-%m").alias("parsed_period")
                 ).sort("parsed_period")
         
-        return grouped_df
+        return grouped_df, agency_list
     
     def process_awards_by_category(self, year, quarter, month, type, category):
         df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
+
+        excluded_columns = ["federal_action_obligation", "fiscal_year", "action_date"]
+        columns = [
+            col for col in df.columns
+            if col not in excluded_columns and "date" not in col.lower()
+        ]
         
         df = df.with_columns([
             pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").alias("parsed_date"),
@@ -1639,4 +1646,4 @@ class DataPull:
                 df_filtered = df.filter((pl.col("month").is_in(quarter_to_calendar_month[quarter])) & (pl.col("year") == year))
         grouped_df = df_filtered.group_by([category]).agg(pl.col(agg_expr).sum())
 
-        return grouped_df
+        return grouped_df, columns

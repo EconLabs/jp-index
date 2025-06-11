@@ -21,7 +21,7 @@ class DataGraph(DataIndex):
             return f"{sign}${abs_val:.0f}"
     
     def create_spending_by_category_graph(self, year: int, quarter: int, month: int, type: str, category: str):
-        df = self.process_awards_by_category(year, quarter, month, type, category)
+        df, columns = self.process_awards_by_category(year, quarter, month, type, category)
         grouped_pd = df.to_pandas()
         grouped_pd['formatted_text'] = grouped_pd["federal_action_obligation"].apply(self.format_money)
 
@@ -49,33 +49,53 @@ class DataGraph(DataIndex):
             text='formatted_text:N'
         )
 
-        data_chart = chart + text
+        data_chart = (chart + text).properties(
+            width='container'
+        ).configure_view(
+            fill='#e6f7ff'
+        ).configure_axis(
+            gridColor='white',
+            grid=True
+        )
 
-        return data_chart
+        return data_chart, columns
     
     def create_secter_graph(self, type: str, secter: str):
-        df = self.process_awards_by_secter(type, secter)
+        df, agency_list = self.process_awards_by_secter(type, secter)
+
         grouped_pd = df.to_pandas()
         grouped_pd['formatted_text'] = grouped_pd["federal_action_obligation"].apply(self.format_money)
 
-        if type == 'month':
+        if type == 'monthly':
+            period = "parsed_period"
             sort_expr = grouped_pd["parsed_period"].tolist()
         else:
+            period = 'time_period'
             sort_expr = 'x'
 
-        num_points = len(grouped_pd['parsed_period'].unique())
-        chart_width = max(600, num_points * 15)
+        if type == 'monthly' or type == 'quarterly':
+            num_points = len(grouped_pd[period].unique())
+            chart_width = max(600, num_points * 15)
+        else:
+            chart_width = 'container'
 
         data_chart = alt.Chart(grouped_pd).mark_line().encode(
-            x=alt.X('parsed_period:O', title=None, sort=sort_expr),
+            x=alt.X(f'{period}:O', title=None, sort=sort_expr),
             y=alt.Y('federal_action_obligation:Q', title=None),
             tooltip=[
-                alt.Tooltip("parsed_period:O", title="Periodo"),
+                alt.Tooltip(f"{period}:O", title="Periodo"),
                 alt.Tooltip(f"federal_action_obligation:Q", title='federal_action_obligation')
             ]
-        ).properties(width=chart_width)
+        ).properties(
+            width=chart_width
+        ).configure_view(
+            fill='#e6f7ff'
+        ).configure_axis(
+            gridColor='white',
+            grid=True
+        )
 
-        return data_chart
+        return data_chart, agency_list
     
     
 
