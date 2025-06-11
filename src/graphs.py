@@ -21,10 +21,17 @@ class DataGraph(DataIndex):
             return f"{sign}${abs_val:.0f}"
     
     def create_spending_by_category_graph(self, year: int, quarter: int, month: int, type: str, category: str):
-        process = DataIndex()
-        df = process.process_awards_by_category(year, quarter, month, type, category)
+        df = self.process_awards_by_category(year, quarter, month, type, category)
         grouped_pd = df.to_pandas()
         grouped_pd['formatted_text'] = grouped_pd["federal_action_obligation"].apply(self.format_money)
+
+        exclude_columns = ["action_date", "month", 'parsed_date', "year", "quarter", "fiscal_year", 'pr_fiscal_year']
+
+        dropdown = alt.binding_select(
+            options=[col for col in df.columns if col not in exclude_columns],
+            name="Y-axis column",
+        )
+        ycol_param = alt.param(value="awarding_agency_name", bind=dropdown)
 
         chart = alt.Chart(grouped_pd).mark_bar().encode(
             y=alt.Y(f'{category}:N', title=None, sort='-x'),
@@ -41,18 +48,17 @@ class DataGraph(DataIndex):
             align=alt.ExprRef("datum.federal_action_obligation < 0 ? 'right' : 'left'"),
             dx=alt.ExprRef("datum.federal_action_obligation < 0 ? -3 : 3")
         ).encode(
-            y=alt.Y(f'{category}:N', sort='-x'),
+            y=alt.Y(f'Y:N', sort='-x'),
             x=alt.X('federal_action_obligation:Q'),
             text='formatted_text:N'
-        )
+        ).transform_calculate(y=f"datum[{ycol_param.name}]").add_params(ycol_param)
 
         data_chart = chart + text
 
         return data_chart
     
     def create_secter_graph(self, type: str, secter: str):
-        process = DataIndex()
-        df = process.process_awards_by_secter(type, secter)
+        df = self.process_awards_by_secter(type, secter)
         grouped_pd = df.to_pandas()
         grouped_pd['formatted_text'] = grouped_pd["federal_action_obligation"].apply(self.format_money)
 
