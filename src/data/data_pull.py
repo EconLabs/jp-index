@@ -1606,13 +1606,14 @@ class DataPull:
         
         return grouped_df
     
-    def process_awards_by_category(self, dropdown, second_dropdown, type):
+    def process_awards_by_category(self, year, quarter, month, type, category):
         df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
         
         df = df.with_columns([
             pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").alias("parsed_date"),
             (pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.month()).alias("month"),
             (pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.year()).alias("year"),
+            pl.col(category).str.to_lowercase()
         ])
         df = df.with_columns([
             (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("pr_fiscal_year"),
@@ -1623,23 +1624,19 @@ class DataPull:
 
         match type:
             case 'fiscal':
-                df_filtered = df.filter(pl.col("pr_fiscal_year") == dropdown)
-                agg = "pr_fiscal_year"
-            case 'yearly':
-                df_filtered = df.filter(pl.col("year") == dropdown)
-                agg = "year"
-            case 'monthly':
-                df_filtered = df.filter((pl.col("month") == dropdown) & (pl.col("year") == second_dropdown))
-                agg = "month"
-            case 'quarterly':
+                df_filtered = df.filter(pl.col("pr_fiscal_year") == year)
+            case 'year':
+                df_filtered = df.filter(pl.col("year") == year)
+            case 'month':
+                df_filtered = df.filter(pl.col("month") == month)
+            case 'quarter':
                 quarter_to_calendar_month = {
                     1: [1, 2, 3], 
                     2: [4, 5, 6], 
                     3: [7, 8, 9],
                     4: [10, 11, 12]
                 }
-                df_filtered = df.filter((pl.col("month").is_in(quarter_to_calendar_month[dropdown])) & (pl.col("year") == second_dropdown))
-                agg = "year"
-        grouped_df = df_filtered.group_by([agg]).agg(pl.col(agg_expr).sum())
+                df_filtered = df.filter(pl.col("month").is_in(quarter_to_calendar_month[quarter]))
+        grouped_df = df_filtered.group_by([category]).agg(pl.col(agg_expr).sum())
 
         return grouped_df
