@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import duckdb
 import polars as pl
+from src.data.data_pull import DataPull
 
 
 class DataGraph(DataIndex):
@@ -88,6 +89,9 @@ class DataGraph(DataIndex):
         return (metric.replace("_", " ").capitalize(), ".2f")
 
     def create_energy_chart(self, period: str, metric: str) -> alt.Chart:
+        dp = DataPull()
+        dp.pull_energy_data()
+        dp.insert_energy_data()
         conn = duckdb.connect(self.data_file)
         df = conn.execute("SELECT * FROM EnergyTable").fetchdf()
 

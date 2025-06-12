@@ -876,6 +876,16 @@ class DataPull:
 
         return self.conn.sql("SELECT * FROM EnergyTable;").pl()
 
+    def pull_energy_data(self, update: bool = False):
+        url = "https://indicadores.pr/dataset/49746389-12ce-48f6-b578-65f6dc46f53f/resource/8025f821-45c1-4c6a-b2f4-8d641cc03df1/download/aee-meta-ultimo.csv"
+        file_path = f"{self.saving_dir}/raw/aee-meta-ultimo.csv"
+        if os.path.exists(file_path) and not update:
+            logging.info(f"[DataPull] {file_path} ya existe — omito descarga.")
+            return file_path    
+        
+        self.pull_file(url, file_path, False)
+        logging.info(f"Downloaded file to {file_path}")
+        return file_path
 
     def pull_consumer(self, file_path: str):
         """
@@ -1519,9 +1529,3 @@ class DataPull:
 
             clean_df = pl.concat([clean_df, tmp], how="vertical")
         return clean_df
-
-    def pull_energy_data(self):
-        url = "https://indicadores.pr/dataset/49746389-12ce-48f6-b578-65f6dc46f53f/resource/8025f821-45c1-4c6a-b2f4-8d641cc03df1/download/aee-meta-ultimo.csv"
-        file_path = f"{self.saving_dir}/raw/aee-meta-ultimo.csv"
-        self.pull_file(url, file_path, False)
-        logging.info(f"Downloaded file to {file_path}")
