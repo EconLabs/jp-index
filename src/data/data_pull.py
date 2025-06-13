@@ -1,6 +1,7 @@
 import logging
 import os
 import zipfile
+import time
 from datetime import datetime
 
 import polars as pl
@@ -697,6 +698,21 @@ class DataPull:
         acs = acs.rename({col: col.lower().replace("-", "_") for col in acs.columns})
 
         return acs
+    
+    def download_with_retry(self, url, file_path):
+        TARGET_HTML_SIZE = 3893
+
+        while True:
+            self.pull_file(url, file_path)
+            file_size = os.path.getsize(file_path)
+
+            if file_size != TARGET_HTML_SIZE:
+                logging.info(f"✅ Downloaded {file_path} with size {file_size} bytes")
+                break
+            else:
+                logging.info(f"⚠️ File not ready for download, retrying in 30 seconds...")
+                os.remove(file_path)
+                time.sleep(30)
 
     def pull_awards_by_year(self, fiscal_year: int) -> pl.DataFrame:
         base_url = "https://api.usaspending.gov/api/v2/bulk_download/awards/"
@@ -731,7 +747,7 @@ class DataPull:
                     return pl.DataFrame()
                 logging.info(f"Downloaded file for fiscal year: {fiscal_year}.")
                 file_path = f"data/raw/{fiscal_year}_spending.zip"
-                self.pull_file(url, file_path)
+                self.download_with_retry(url, file_path)
                 self.extract_awards_by_year(fiscal_year)
                 df = self.clean_awards_by_year(fiscal_year)
                 return df
