@@ -1673,3 +1673,64 @@ class DataPull:
         grouped_df = df_filtered.group_by([category]).agg(pl.col(agg_expr).sum())
 
         return grouped_df, columns
+    
+    def process_energy_data(
+        self,
+        period : str = "monthly",
+        metric : str | None = None
+    ) -> pl.DataFrame:
+
+        df = self.conn.sql("SELECT * FROM EnergyTable").pl()
+        df = (
+            df.with_columns(
+                pl.col("mes").str.strptime(pl.Date, "%m/%d/%Y", strict=False).alias("date")
+            )
+            .with_columns([
+                pl.col("date").dt.year().alias("year"),
+                pl.col("date").dt.month().alias("month"),
+            ])
+            .with_columns([
+                ((pl.col("month") - 1) // 3 + 1).alias("quarter"),
+                (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("fiscal"),
+            ])
+            .sort("date")
+        )
+        if period == "yearly":
+            df_out = (
+                df.group_by("year")
+                .agg(pl.col(metric) if metric
+                    else df.select(pl.Float64).sum())
+                .sort("year")
+            )
+
+        elif period == "quarterly":
+            df_out = (
+                df.group_by(["year", "quarter"])
+                .agg(pl.col(metric) if metric
+                    else df.select(pl.Float64).sum())
+                .with_columns(
+                    (pl.col("year").cast(pl.String)
+                    + "-Q" + pl.col("quarter").cast(pl.String)).alias("year_quarter")
+                )
+                .select("year_quarter", *pl.all().exclude("year_quarter"))
+                .sort("year_quarter")
+            )
+
+        elif period == "fiscal":
+            df_out = (
+                df.group_by("fiscal")
+                .agg(pl.col(metric) if metric
+                    else df.select(pl.Float64).sum())
+                .sort("fiscal")
+            )
+        else:
+            numeric_cols = [
+                c for c in df.columns
+                if df[c].dtype.is_numeric() and c != "date"
+            ]
+            if metric:
+                df_out = df.select(["date", metric]).sort("date")
+            else:
+                df_out = df.select(["date", *numeric_cols]).sort("date")
+
+        return df_out
