@@ -27,10 +27,10 @@ class DataGraph(DataIndex):
         grouped_pd['formatted_text'] = grouped_pd["federal_action_obligation"].apply(self.format_money)
 
         chart = alt.Chart(grouped_pd).mark_bar().encode(
-            y=alt.Y(f'{category}:N', title=None, sort='-x'),
+            y=alt.Y(f'{category}:N', title="", sort='-x'),
             x=alt.X(
                 'federal_action_obligation:Q', 
-                title=None,
+                title="",
                 scale=alt.Scale(type='sqrt'),
                 axis=None
             ),
@@ -51,7 +51,12 @@ class DataGraph(DataIndex):
         )
 
         data_chart = (chart + text).properties(
-            width='container'
+            width='container',
+            title=alt.TitleParams(
+                text=f"Category: {category} / Frequency: {type.capitalize()}",
+                anchor='middle', 
+                offset=10     
+            )
         ).configure_view(
             fill='#e6f7ff'
         ).configure_axis(
@@ -81,14 +86,19 @@ class DataGraph(DataIndex):
             chart_width = 'container'
 
         data_chart = alt.Chart(grouped_pd).mark_line().encode(
-            x=alt.X(f'{period}:O', title=None, sort=sort_expr),
-            y=alt.Y('federal_action_obligation:Q', title=None),
+            x=alt.X(f'{period}:O', title='', sort=sort_expr),
+            y=alt.Y('federal_action_obligation:Q', title="",),
             tooltip=[
                 alt.Tooltip(f"{period}:O", title="Periodo"),
                 alt.Tooltip(f"federal_action_obligation:Q", title='federal_action_obligation')
             ]
         ).properties(
-            width=chart_width
+            width=chart_width,
+            title=alt.TitleParams(
+                text=f"Secter: {secter} / Frequency: {type.capitalize()}",
+                anchor='middle', 
+                offset=10     
+            )
         ).configure_view(
             fill='#e6f7ff'
         ).configure_axis(
