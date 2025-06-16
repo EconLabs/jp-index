@@ -258,17 +258,24 @@ class DataGraph(DataIndex):
 
         return chart
     
-    def create_indicators_graph(self, time_frame: str) -> alt.Chart:
+    def create_indicators_graph(self, time_frame: str, column: str) -> alt.Chart:
         df = self.jp_indicator_data(time_frame)
         df = df.fill_null(0).fill_nan(0)
 
         exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
+        columns = [col for col in df.columns if col not in exclude_columns]
 
-        dropdown = alt.binding_select(
-            options=[col for col in df.columns if col not in exclude_columns],
-            name="Y-axis column",
-        )
-        ycol_param = alt.param(value="indice_de_actividad_economica", bind=dropdown)
+        df = df.filter(pl.col(column) != 0)
+        min_idx = df.select(pl.col(column).arg_min()).item()
+        max_idx = df.select(pl.col(column).arg_max()).item()
+
+        range_min = df[column][min_idx] - df[column][min_idx]*.2
+        range_max = df[column][max_idx] + df[column][max_idx]*.2
+
+        if time_frame == 'fiscal':
+            df = df.filter(pl.col('fiscal') < 2024)
+        else:
+            df = df.filter(pl.col('year') < 2025)
 
         if time_frame == "fiscal":
             frequency = "fiscal"
@@ -305,14 +312,12 @@ class DataGraph(DataIndex):
             .mark_line()
             .encode(
                 x=alt.X(f"{frequency}:N", title=""),
-                y=alt.Y("y:Q", title=f""),
+                y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(domain=[range_min, range_max])),
                 tooltip=[
                     alt.Tooltip(f"{frequency}:N", title="Periodo"),
-                    alt.Tooltip(f"y:Q",)
+                    alt.Tooltip(f"{column}:Q",)
                 ]
             )
-            .transform_calculate(y=f"datum[{ycol_param.name}]")
-            .add_params(ycol_param)
             .properties(width=chart_width, padding={"top": 10, "bottom": 10, "left": 30})
         ).configure_view(
             fill='#e6f7ff'
@@ -321,7 +326,7 @@ class DataGraph(DataIndex):
             grid=True
         )
 
-        return chart
+        return chart, columns
     
     def create_consumer_graph(self, time_frame: str) -> alt.Chart:
         df = self.consumer_data(time_frame)
