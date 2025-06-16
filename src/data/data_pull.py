@@ -1655,6 +1655,9 @@ class DataPull:
 
         agg_expr = "federal_action_obligation"
 
+        if year not in df.select(pl.col("year").unique()).to_series():
+            raise ValueError(f"Year {year} not found in the DataFrame.")
+
         match type:
             case 'fiscal':
                 df_filtered = df.filter(pl.col("pr_fiscal_year") == year)
