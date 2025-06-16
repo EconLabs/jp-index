@@ -53,15 +53,18 @@ class DataGraph(DataIndex):
         data_chart = (chart + text).properties(
             width='container',
             title=alt.TitleParams(
-                text=f"Category: {category} / Frequency: {type.capitalize()}",
-                anchor='middle', 
-                offset=10     
+                text=f"Category: {category} / Frequency: {type.capitalize()}",     
             )
         ).configure_view(
             fill='#e6f7ff'
         ).configure_axis(
             gridColor='white',
             grid=True
+        ).configure_title(
+            anchor='start',     
+            fontSize=16,         
+            color='#333333',      
+            offset=30,         
         )
 
         return data_chart, columns
@@ -81,7 +84,10 @@ class DataGraph(DataIndex):
 
         if type == 'monthly':
             num_points = len(grouped_pd[period].unique())
-            chart_width = max(600, num_points * 15)
+            if num_points < 84:
+                chart_width = 'container'
+            else:
+                chart_width = max(600, num_points * 15)
         else:
             chart_width = 'container'
 
@@ -95,15 +101,18 @@ class DataGraph(DataIndex):
         ).properties(
             width=chart_width,
             title=alt.TitleParams(
-                text=f"Secter: {secter} / Frequency: {type.capitalize()}",
-                anchor='middle', 
-                offset=10     
+                text=f"Secter: {secter} / Frequency: {type.capitalize()}",  
             )
         ).configure_view(
             fill='#e6f7ff'
         ).configure_axis(
             gridColor='white',
             grid=True
+        ).configure_title(
+            anchor='start',     
+            fontSize=16,         
+            color='#333333',      
+            offset=30           
         )
 
         return data_chart, agency_list
