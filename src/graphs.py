@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import duckdb
 import polars as pl
-from src.data.data_pull import DataPull
+from .data.data_pull import DataPull
 
 
 class DataGraph(DataIndex):
