@@ -1790,7 +1790,7 @@ class DataPull:
         elif data_type == 'indices_precio':
             df = df
         else:
-            raise ValueError("Invalid data type. Choose from 'cambio_porcentual', 'cambio_mes' or 'indices_precio'.")
+            raise ValueError("Invalid data type. Choose from 'cambio_porcentual', 'primera_diferencia' or 'indices_precio'.")
 
         df.write_csv(f"{self.saving_dir}processed/{time_frame}-{data_type}-price_indexes.csv")
 
