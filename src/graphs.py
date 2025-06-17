@@ -269,13 +269,6 @@ class DataGraph(DataIndex):
             if col not in exclude_columns
         ]
 
-        df = df.filter(pl.col(column) != 0)
-        min_idx = df.select(pl.col(column).arg_min()).item()
-        max_idx = df.select(pl.col(column).arg_max()).item()
-
-        range_min = df[column][min_idx] - df[column][min_idx]*.2
-        range_max = df[column][max_idx] + df[column][max_idx]*.2
-
         if time_frame == 'fiscal':
             df = df.filter(pl.col('fiscal') < 2024)
         else:
@@ -304,18 +297,29 @@ class DataGraph(DataIndex):
             )
             df = df.sort(frequency)
 
-        num_points = len(df[frequency].unique())
+        df = df.filter(pl.col(column) != 0)
+        min_idx = df.select(pl.col(column).arg_min()).item()
+        max_idx = df.select(pl.col(column).arg_max()).item()
 
-        if time_frame == "fiscal" or time_frame == "yearly":
-            chart_width = 'container'
+        range_min = df[column][min_idx] - df[column][min_idx]*.2
+        range_max = df[column][max_idx] + df[column][max_idx]*.2
+
+        chart_width = 'container'
+
+        x_values = df.select(frequency).unique().to_series().to_list()
+
+        if time_frame == "monthly":
+            tick_vals = x_values[::6]
+        elif time_frame == "quarterly":
+            tick_vals = x_values[::3]
         else:
-            chart_width = max(600, num_points * 15)
+            tick_vals = x_values
 
         chart = (
             alt.Chart(df)
             .mark_line()
             .encode(
-                x=alt.X(f"{frequency}:N", title=""),
+                x=alt.X(f"{frequency}:N", title="", axis=alt.Axis(values=tick_vals)),
                 y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(domain=[range_min, range_max])),
                 tooltip=[
                     alt.Tooltip(f"{frequency}:N", title="Periodo"),
