@@ -263,7 +263,11 @@ class DataGraph(DataIndex):
         df = df.fill_null(0).fill_nan(0)
 
         exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
-        columns = [col for col in df.columns if col not in exclude_columns]
+        columns = [
+            {"value": col, "label": col.replace("_", " ").capitalize()}
+            for col in df.columns
+            if col not in exclude_columns
+        ]
 
         df = df.filter(pl.col(column) != 0)
         min_idx = df.select(pl.col(column).arg_min()).item()
