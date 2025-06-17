@@ -52,21 +52,12 @@ class DataGraph(DataIndex):
 
         data_chart = (chart + text).properties(
             width='container',
-            title=alt.TitleParams(
-                text=f"Category: {category} / Frequency: {type.capitalize()}",     
-            )
         ).configure_view(
             fill='#e6f7ff'
         ).configure_axis(
             gridColor='white',
             grid=True
-        ).configure_title(
-            anchor='start',     
-            fontSize=16,         
-            color='#333333',      
-            offset=30,         
-        )
-
+        )                                            
         return data_chart, columns
     
     def create_secter_graph(self, type: str, secter: str):
@@ -99,20 +90,12 @@ class DataGraph(DataIndex):
                 alt.Tooltip(f"federal_action_obligation:Q", title='federal_action_obligation')
             ]
         ).properties(
-            width=chart_width,
-            title=alt.TitleParams(
-                text=f"Secter: {secter} / Frequency: {type.capitalize()}",  
-            )
+            width=chart_width,           
         ).configure_view(
             fill='#e6f7ff'
         ).configure_axis(
             gridColor='white',
             grid=True
-        ).configure_title(
-            anchor='start',     
-            fontSize=16,         
-            color='#333333',      
-            offset=30           
         )
 
         return data_chart, agency_list
@@ -340,7 +323,7 @@ class DataGraph(DataIndex):
         df = self.consumer_data(time_frame)
         df = df.fill_null(0).fill_nan(0)
 
-        print(df.columns)
+        # print(df.columns)
         exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
 
         dropdown = alt.binding_select(

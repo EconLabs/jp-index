@@ -1638,7 +1638,8 @@ class DataPull:
 
         excluded_columns = ["federal_action_obligation", "fiscal_year", "action_date"]
         columns = [
-            col for col in df.columns
+            {"value": col, "label": col.replace("_", " ").capitalize()}
+            for col in df.columns
             if col not in excluded_columns and "date" not in col.lower()
         ]
         
