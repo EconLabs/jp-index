@@ -76,7 +76,7 @@ class DataIndex(DataPull):
                 raise ValueError("Invalid aggregation")
             
     def apply_data_type(self, df: pl.DataFrame, data_type: str):
-        value_columns = [col for col in df.columns if col not in {"year", "month"}]
+        value_columns = [col for col in df.columns if col not in {"year", "month", "fiscal", "date", "quarter"}]
 
         lag_df = df.select(["year", "month"] + value_columns).with_columns([
             (pl.col("year") + 1).alias("year")
@@ -111,7 +111,7 @@ class DataIndex(DataPull):
         elif data_type == 'indices_precio':
             df = self.consumer_data(time_frame)
             df = df
-            
+  
         return df
 
     def jp_indicator_data(self, time_frame: str) -> pl.DataFrame:
