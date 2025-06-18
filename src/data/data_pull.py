@@ -1734,7 +1734,6 @@ class DataPull:
                     .group_by("time_period")
                     .agg(agg_expr)
                 )
-
             case "quarterly":
                 quarter_expr = (
                     pl.when(pl.col("month").is_in([1, 2, 3])).then(pl.lit("q1"))
@@ -1789,4 +1788,63 @@ class DataPull:
             case _:
                 raise ValueError("period debe ser monthly | quarterly | yearly | fiscal")
 
-        return grouped_df, columns
+        return grouped_df, columns                
+      
+   
+    def process_price_indexes(
+        self,
+        time_frame: str,
+        data_type: str
+    ):
+        if time_frame == 'yearly':
+            df = pl.read_excel(f"{self.saving_dir}raw/price_indexes.xlsx", sheet_id=1)
+            df = df.with_columns(
+                (pl.col("year").cast(str)).alias("time_period")
+            )
+            df = df.drop(['year'])
+        elif time_frame == 'quarterly':
+            df = pl.read_excel(f"{self.saving_dir}raw/price_indexes.xlsx", sheet_id=2)
+            df = df.with_columns(
+                (pl.col("year").cast(str) + "-Q" + pl.col("qtr").cast(str)).alias("time_period")
+            )
+            df = df.drop(['year', 'qtr'])
+        elif time_frame == 'fiscal':
+            df = pl.read_excel(f"{self.saving_dir}raw/price_indexes.xlsx", sheet_id=3)
+            df = df.with_columns(
+                (pl.col("fiscal_year").cast(str)).alias("time_period")
+            )
+            df = df.drop(['fiscal_year'])
+        elif time_frame == 'monthly':
+            df = pl.read_excel(f"{self.saving_dir}raw/price_indexes.xlsx", sheet_id=4)
+            df = df.with_columns(
+                (pl.col("year").cast(str) + "-" + pl.col("month").cast(str).str.zfill(2)).alias("time_period")
+            )
+            df = df.drop(['year', 'month'])
+        else:
+            raise ValueError("Invalid time frame. Choose from 'yearly', 'quarterly', 'fiscal' or 'monthly'.")
+
+        df = df.drop([
+            col for col in df.columns
+            if df.select(
+                (pl.col(col).is_null()) |
+                ((pl.col(col) == "") if df.schema[col] == pl.String else False)
+            ).to_series().any()
+        ])
+        df = df.sort("time_period")
+
+        if data_type == 'cambio_porcentual':
+            df = df.with_columns([
+                (pl.col(col).cast(pl.Float64) - 100).alias(col) for col in df.columns  if col != "time_period"
+            ])
+        elif data_type == 'primera_diferencia':
+            df = df.with_columns([
+                pl.col(col).diff(n=1).alias(col) for col in df.columns if col != "time_period"
+            ])
+        elif data_type == 'indices_precio':
+            df = df
+        else:
+            raise ValueError("Invalid data type. Choose from 'cambio_porcentual', 'primera_diferencia' or 'indices_precio'.")
+
+        df.write_csv(f"{self.saving_dir}processed/{time_frame}-{data_type}-price_indexes.csv")
+
+        return df
