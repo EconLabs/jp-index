@@ -105,9 +105,11 @@ class DataIndex(DataPull):
         if data_type == 'cambio_porcentual':
             df = self.consumer_data('monthly')
             df = self.apply_data_type(df, data_type)
+            df = df.filter(pl.col("year") != 1984)
         elif data_type == 'primera_diferencia':
             df = self.consumer_data('monthly')
             df = self.apply_data_type(df, data_type)
+            df = df.filter(pl.col("year") != 1984)
         elif data_type == 'indices_precio':
             df = self.consumer_data(time_frame)
             df = df
