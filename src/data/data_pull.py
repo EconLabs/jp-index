@@ -1678,13 +1678,27 @@ class DataPull:
 
         return grouped_df, columns
     
-    def process_energy_data(
-        self,
-        period : str = "monthly",
-        metric : str | None = None
-    ) -> pl.DataFrame:
 
+    def process_energy_data(
+    self,
+    period: str = "monthly",  
+    metric: str = "generacion_neta_mkwh"
+) -> pl.DataFrame:
+        self.pull_energy_data()
+        self.insert_energy_data()
         df = self.conn.sql("SELECT * FROM EnergyTable").pl()
+
+        month_map = {
+            1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
+            7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec',
+        }
+        months = list(month_map.values())
+        excluded_columns = ["mes"]
+        columns = [
+            {"value": col, "label": col.replace("_", " ").capitalize()}
+            for col in df.columns
+            if col not in excluded_columns
+        ]
         df = (
             df.with_columns(
                 pl.col("mes").str.strptime(pl.Date, "%m/%d/%Y", strict=False).alias("date")
@@ -1693,48 +1707,86 @@ class DataPull:
                 pl.col("date").dt.year().alias("year"),
                 pl.col("date").dt.month().alias("month"),
             ])
-            .with_columns([
-                ((pl.col("month") - 1) // 3 + 1).alias("quarter"),
+            .with_columns(
+                pl.col("month").cast(pl.String).replace(month_map).alias("month_name"),
                 (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("fiscal"),
-            ])
-            .sort("date")
+            )
         )
-        if period == "yearly":
-            df_out = (
-                df.group_by("year")
-                .agg(pl.col(metric) if metric
-                    else df.select(pl.Float64).sum())
-                .sort("year")
-            )
 
-        elif period == "quarterly":
-            df_out = (
-                df.group_by(["year", "quarter"])
-                .agg(pl.col(metric) if metric
-                    else df.select(pl.Float64).sum())
-                .with_columns(
-                    (pl.col("year").cast(pl.String)
-                    + "-Q" + pl.col("quarter").cast(pl.String)).alias("year_quarter")
+        agg_expr = pl.col(metric).sum().alias(metric)
+        period = period.lower()
+
+        match period:
+            case "fiscal":
+                grouped_df = (
+                    df.with_columns(
+                        pl.col("fiscal").cast(pl.String).alias("time_period")
+                    )
+                    .group_by("time_period")
+                    .agg(agg_expr)
                 )
-                .select("year_quarter", *pl.all().exclude("year_quarter"))
-                .sort("year_quarter")
-            )
 
-        elif period == "fiscal":
-            df_out = (
-                df.group_by("fiscal")
-                .agg(pl.col(metric) if metric
-                    else df.select(pl.Float64).sum())
-                .sort("fiscal")
-            )
-        else:
-            numeric_cols = [
-                c for c in df.columns
-                if df[c].dtype.is_numeric() and c != "date"
-            ]
-            if metric:
-                df_out = df.select(["date", metric]).sort("date")
-            else:
-                df_out = df.select(["date", *numeric_cols]).sort("date")
+            case "yearly":
+                grouped_df = (
+                    df.with_columns(
+                        pl.col("year").cast(pl.String).alias("time_period")
+                    )
+                    .group_by("time_period")
+                    .agg(agg_expr)
+                )
 
-        return df_out
+            case "quarterly":
+                quarter_expr = (
+                    pl.when(pl.col("month").is_in([1, 2, 3])).then(pl.lit("q1"))
+                    .when(pl.col("month").is_in([4, 5, 6])).then(pl.lit("q2"))
+                    .when(pl.col("month").is_in([7, 8, 9])).then(pl.lit("q3"))
+                    .otherwise(pl.lit("q4"))
+                )
+                grouped_df = (
+                    df.with_columns(
+                        (pl.col("year").cast(pl.String) + "-" + quarter_expr)
+                            .alias("time_period")
+                    )
+                    .group_by("time_period")
+                    .agg(agg_expr)
+                )
+
+            case "monthly":
+                results = pl.DataFrame(schema={
+                    "month_name":  pl.String,
+                    metric:        pl.Float64,
+                    "year":        pl.Int32,
+                    "time_period": pl.String,
+                })
+                months_df = pl.DataFrame({"month_name": months})
+
+                for yr in df.select("year").unique().to_series():
+                    df_year = df.filter(pl.col("year") == yr)
+
+                    df_year = months_df.join(df_year, on="month_name", how="left")
+                    df_year = df_year.select("month_name", metric, "year").with_columns(
+                        pl.col("year").fill_null(yr),
+                        pl.col(metric).fill_null(0)
+                    )
+                    df_year = df_year.group_by(["month_name", "year"]).agg(agg_expr)
+                    df_year = df_year.with_columns(
+                        pl.col(metric).cast(pl.Float64)
+                    )
+
+                    df_year = (
+                        df_year
+                        .with_columns(
+                            (pl.col("year").cast(pl.String) + pl.col("month_name"))
+                                .alias("time_period")
+                        )
+                        .select("month_name", metric, "year", "time_period")
+                    )
+
+                    results = pl.concat([results, df_year])
+
+                grouped_df = results
+
+            case _:
+                raise ValueError("period debe ser monthly | quarterly | yearly | fiscal")
+
+        return grouped_df, columns
