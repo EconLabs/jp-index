@@ -10,7 +10,6 @@ dependencies = [
   "fastexcel>=0.12.0",
   "pandas>=2.2.3",
   "numpy>=2.2.6",
-  "pandas>=2.2.3",
   "polars>=1.16.0",
   "pyarrow>=17.0.0",
   "sqlmodel>=0.0.22",

@@ -1,5 +1,5 @@
 import polars as pl
-import pd
+import pandas as pd
 import statsmodels.api as sm
 
 from .data_pull import DataPull

@@ -245,6 +245,10 @@ class DataPull:
                 )
             )
             df = df.with_columns(
+                pl.when(pl.col("descripcion") == "2016-05-15 00:00:00").then(pl.col("year") == 2015)
+                  .otherwise(pl.col("year"))
+            )
+            df = df.with_columns(
                 date=pl.date(pl.col("year").cast(pl.String), pl.col("month"), 1)
             ).sort(by="date")
             df = df.with_columns(pl.col("date").cast(pl.String))
