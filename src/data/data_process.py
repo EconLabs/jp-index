@@ -1,4 +1,6 @@
 import polars as pl
+import pd
+import statsmodels.api as sm
 
 from .data_pull import DataPull
 
@@ -153,3 +155,26 @@ class DataIndex(DataPull):
                 return df.group_by("fiscal").agg(aggregation_exprs)
             case _:
                 raise ValueError("Invalid aggregation")
+
+    def jp_cycle_data(self) -> pd.DataFrame:
+        df = self.jp_indicator_data(time_frame="quarterly").filter(
+            pl.col("year") < 2025
+        )
+        data = (
+            df.with_columns(
+                date=pl.col("year").cast(pl.String)
+                + "Q"
+                + pl.col("quarter").cast(pl.String)
+            )
+            .sort("date")
+            .to_pandas()
+        )
+        data.set_index(data["date"], inplace=True)
+        for col in data.columns:
+            if col in ["year", "quarter", "date"]:
+                continue
+            cycle, trend = sm.tsa.filters.hpfilter(data[col], 1600)
+            data[f"{col}_cycle"] = cycle
+            data[f"{col}_trend"] = trend
+        return data
+
