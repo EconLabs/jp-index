@@ -52,21 +52,12 @@ class DataGraph(DataIndex):
 
         data_chart = (chart + text).properties(
             width='container',
-            title=alt.TitleParams(
-                text=f"Category: {category} / Frequency: {type.capitalize()}",     
-            )
         ).configure_view(
             fill='#e6f7ff'
         ).configure_axis(
             gridColor='white',
             grid=True
-        ).configure_title(
-            anchor='start',     
-            fontSize=16,         
-            color='#333333',      
-            offset=30,         
-        )
-
+        )                                            
         return data_chart, columns
     
     def create_secter_graph(self, type: str, secter: str):
@@ -99,20 +90,12 @@ class DataGraph(DataIndex):
                 alt.Tooltip(f"federal_action_obligation:Q", title='federal_action_obligation')
             ]
         ).properties(
-            width=chart_width,
-            title=alt.TitleParams(
-                text=f"Secter: {secter} / Frequency: {type.capitalize()}",  
-            )
+            width=chart_width,           
         ).configure_view(
             fill='#e6f7ff'
         ).configure_axis(
             gridColor='white',
             grid=True
-        ).configure_title(
-            anchor='start',     
-            fontSize=16,         
-            color='#333333',      
-            offset=30           
         )
 
         return data_chart, agency_list
@@ -133,130 +116,77 @@ class DataGraph(DataIndex):
             return ("# Clientes", "d")
         return (metric.replace("_", " ").capitalize(), ".2f")
 
-    def create_energy_chart(self, period: str, metric: str) -> alt.Chart:
-        dp = DataPull()
-        dp.pull_energy_data()
-        dp.insert_energy_data()
-        conn = duckdb.connect(self.data_file)
-        df = conn.execute("SELECT * FROM EnergyTable").fetchdf()
-
-        df["fecha"] = pd.to_datetime(df["mes"], format="%m/%d/%Y", errors="coerce")
-        df["anio"]    = df["fecha"].dt.year
-        df["mes_num"] = df["fecha"].dt.month
-        df["periodo_mensual"] = df["fecha"].dt.to_period("M").astype(str)
-        df["periodo_trimestral"] = df["fecha"].dt.to_period("Q").astype(str)
-        df["anio_fiscal"] = np.where(df["mes_num"] >= 7, df["anio"] + 1, df["anio"])
-
-        periodo = period.lower()
-        if periodo not in ["monthly", "quarterly", "yearly", "fiscal"]:
-            raise ValueError("`period` debe ser uno de: 'monthly','quarterly','yearly','fiscal'.")
-
-        if periodo == "monthly":
-            grouped = (
-                df[["periodo_mensual", metric]]
-                  .groupby("periodo_mensual", as_index=False)[metric]
-                  .sum()
-            )
-            grouped["fecha_plot"] = pd.to_datetime(grouped["periodo_mensual"] + "-01",
-                                                   format="%Y-%m-%d")
-            df_plot = grouped.rename(columns={
-                "periodo_mensual": "periodo",
-                "fecha_plot": "fecha"
-            })
-
-        elif periodo == "quarterly":
-            grouped = (
-                df[["periodo_trimestral", metric]]
-                  .groupby("periodo_trimestral", as_index=False)[metric]
-                  .sum()
-            )
-            grouped["fecha"] = grouped["periodo_trimestral"].apply(
-                lambda s: pd.Period(s, freq="Q").start_time
-            )
-            df_plot = grouped.rename(columns={"periodo_trimestral": "periodo"})
-
-        elif periodo == "yearly":
-            grouped = (
-                df[["anio", metric]]
-                  .groupby("anio", as_index=False)[metric]
-                  .sum()
-            )
-            grouped["fecha"] = pd.to_datetime(grouped["anio"].astype(str) + "-01-01",
-                                              format="%Y-%m-%d")
-            df_plot = grouped.rename(columns={"anio": "periodo"})
-
-        else:
-            grouped = (
-                df[["anio_fiscal", metric]]
-                  .groupby("anio_fiscal", as_index=False)[metric]
-                  .sum()
-            )
-            grouped["fecha"] = grouped["anio_fiscal"].apply(
-                lambda y: pd.to_datetime(f"{y-1}-07-01", format="%Y-%m-%d")
-            )
-            grouped["periodo"] = "FY " + grouped["anio_fiscal"].astype(str)
-            df_plot = grouped.drop(columns=["anio_fiscal"])
+    def create_energy_chart(self, period: str, metric: str):
+        df_grouped, energy_metrics = self.process_energy_data(period, metric)
 
         y_title, y_format = self._detect_unidad_y_formato(metric)
 
-        if periodo == "monthly":
-            x_encoding = alt.X(
-                "fecha:T",
-                title="Monthly",
-                axis=alt.Axis(format="%Y-%m", tickCount="month", labelAngle=90),
-                scale=alt.Scale(domain=[
-                    df_plot["fecha"].max() - pd.DateOffset(years=5),
-                    df_plot["fecha"].max()
-                ])
-            )
+        unique_periods = df_grouped['time_period'].unique().to_list()
+        months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-        elif periodo == "quarterly":
-            x_encoding = alt.X(
-                "fecha:T",
-                timeUnit="yearquarter",
-                title="Quarterly",
-                axis=alt.Axis(labelAngle=90)
-            )
+        if period.lower() == 'monthly':
+            def sort_key(tp):
+                return (int(tp[:4]), months.index(tp[4:]) + 1)
+        elif period.lower() == 'quarterly':
+            def sort_key(tp):
+                yr, qr = tp.split('-')
+                return (int(yr), int(qr[1]))
+        else:  
+            def sort_key(tp):
+                return int(tp)
 
-        elif periodo == "yearly":
-            x_encoding = alt.X(
-                "fecha:T",
-                timeUnit="year",
-                title="Yearly",
-                axis=alt.Axis(format="%Y", tickCount="year", labelAngle=90)
-            )
+        x_order = sorted(unique_periods, key=sort_key)
 
-        else: 
-            x_encoding = alt.X(
-                "fecha:T",
-                title="Fiscal Year",
-                axis=alt.Axis(format=" %Y", tickCount="year", labelAngle=90)
-            )
+        mapping_df = pl.DataFrame({
+            "time_period": x_order,
+            "_order": list(range(len(x_order))),
+        })
+
+        df_sorted = (
+            df_grouped
+            .join(mapping_df, on="time_period", how="left")
+            .sort("_order")
+            .drop("_order")
+        )
+
+        if period == "monthly":
+            tick_vals = x_order[::6]
+        elif period == "quarterly":
+            tick_vals = x_order[::3]
+        else:
+            tick_vals = x_order
+        data = df_sorted.to_dicts()
 
         chart = (
-            alt.Chart(df_plot)
-            .mark_line(point=True, color="#1f77b4")
+            alt.Chart(alt.Data(values=data))
+            .mark_line(point=True)
             .encode(
-                x=x_encoding,
-                y=alt.Y(f"{metric}:Q",
-                        title=y_title,
-                        axis=alt.Axis(format=y_format)),
+                x=alt.X(
+                    'time_period:N',
+                    title='Periodo',
+                    sort=x_order,
+                    axis=alt.Axis(labelAngle=-45, values=tick_vals)
+                ),
+                y=alt.Y(
+                    f'{metric}:Q',
+                    title=y_title,
+                    axis=alt.Axis(format=y_format)
+                ),
                 tooltip=[
-                    alt.Tooltip("periodo:N", title="Periodo"),
-                    alt.Tooltip(f"{metric}:Q", title=y_title, format=y_format)
+                    alt.Tooltip('time_period:N', title='Periodo'),
+                    alt.Tooltip(f'{metric}:Q', title=y_title, format=y_format)
                 ]
             )
             .properties(
-                width="container",
+                width='container',
                 height=300,
-                title=f"Evolución de {metric.replace('_',' ')} ({period.capitalize()})"
+                title=f"Evolución de {metric.replace('_', ' ')} ({period.capitalize()})"
             )
-            .configure_view(fill="#e6f7ff")
-            .configure_axis(gridColor="white", grid=True)
+            .configure_view(fill='#e6f7ff')
+            .configure_axis(grid=True, gridColor='white')
             .interactive(bind_y=False)
         )
-
-        return chart
+        return chart, energy_metrics
     
     def create_indicators_graph(self, time_frame: str, column: str) -> alt.Chart:
         df = self.jp_indicator_data(time_frame)
