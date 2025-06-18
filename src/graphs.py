@@ -332,49 +332,6 @@ class DataGraph(DataIndex):
         )
 
         return chart, columns
-    
-    def create_price_index_graph(self, time_frame: str, data_type: str, column: str) -> alt.Chart:
-        df = self.process_price_indexes(time_frame, data_type)
-
-        exclude_columns = ["time_period"]
-
-        columns = [
-            {"value": col, "label": col.replace("_", " ").capitalize()}
-            for col in df.columns
-            if col not in exclude_columns
-        ]
-
-        chart_width = 'container'
-
-        x_values = df.select("time_period").unique().to_series().to_list()
-
-        if time_frame == "monthly":
-            tick_vals = x_values[::6]
-        elif time_frame == "quarterly":
-            tick_vals = x_values[::3]
-        else:
-            tick_vals = x_values
-
-        chart = (
-            alt.Chart(df)
-            .mark_line()
-            .encode(
-                x=alt.X(f"time_period:N", title="", axis=alt.Axis(values=tick_vals)),
-                y=alt.Y(f"{column}:Q", title=f""),
-                tooltip=[
-                    alt.Tooltip(f"time_period:N", title="Periodo"),
-                    alt.Tooltip(f"{column}:Q",)
-                ]
-            )
-            .properties(width=chart_width,)
-        ).configure_view(
-            fill='#e6f7ff'
-        ).configure_axis(
-            gridColor='white',
-            grid=True
-        )
-
-        return chart, columns
 
 
 
