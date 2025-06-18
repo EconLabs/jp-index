@@ -16,7 +16,13 @@ dependencies = [
   "sqlmodel>=0.0.22",
   "tqdm>=4.67.1",
   "altair>=5.5.0",
+  "statsmodels>=0.14.4",
+  "matplotlib>=3.10.3",
 ]
 
 [dependency-groups]
-dev = ["jupyter>=1.1.1", "pynvim>=0.5.2"]
+dev = [
+    "jupyter>=1.1.1",
+    "pre-commit>=4.2.0",
+    "pynvim>=0.5.2",
+]
