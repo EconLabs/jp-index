@@ -72,6 +72,45 @@ class DataIndex(DataPull):
                 return df.group_by("fiscal").agg(aggregation_exprs)
             case _:
                 raise ValueError("Invalid aggregation")
+            
+    def apply_data_type(self, df: pl.DataFrame, data_type: str):
+        value_columns = [col for col in df.columns if col not in {"year", "month"}]
+
+        lag_df = df.select(["year", "month"] + value_columns).with_columns([
+            (pl.col("year") + 1).alias("year")
+        ]).rename({col: f"{col}_lag" for col in value_columns})
+
+        df = df.join(lag_df, on=["year", "month"], how="left")
+
+        for col in value_columns:
+            if (data_type == "cambio_porcentual"):
+                transformation = (((pl.col(col) - pl.col(f"{col}_lag")).cast(pl.Float64))/((pl.col(f"{col}_lag").cast(pl.Float64)))*100).alias(col)
+            else:
+                transformation = (pl.col(col) - pl.col(f"{col}_lag")).alias(col)
+                
+            df = df.with_columns(
+                transformation
+            )
+        df = df.select(df.columns)
+
+        df = df.with_columns([
+            pl.col(col).dt.total_microseconds().alias(col) if df.schema[col] == pl.Duration("us") else pl.col(col)
+            for col in df.columns
+        ])
+        return df
+            
+    def process_consumer_data(self, time_frame: str, data_type: str) -> pl.DataFrame:
+        if data_type == 'cambio_porcentual':
+            df = self.consumer_data('monthly')
+            df = self.apply_data_type(df, data_type)
+        elif data_type == 'primera_diferencia':
+            df = self.consumer_data('monthly')
+            df = self.apply_data_type(df, data_type)
+        elif data_type == 'indices_precio':
+            df = self.consumer_data(time_frame)
+            df = df
+            
+        return df
 
     def jp_indicator_data(self, time_frame: str) -> pl.DataFrame:
         """

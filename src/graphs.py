@@ -266,8 +266,8 @@ class DataGraph(DataIndex):
 
         return chart, columns
     
-    def create_consumer_graph(self, time_frame: str, column: str) -> alt.Chart:
-        df = self.consumer_data(time_frame)
+    def create_consumer_graph(self, time_frame: str, column: str, data_type: str) -> alt.Chart:
+        df = self.process_consumer_data(time_frame, data_type)
         df = df.fill_null(0).fill_nan(0)
 
         exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
@@ -300,8 +300,7 @@ class DataGraph(DataIndex):
                 ).alias(frequency)
             )
             df = df.sort(frequency)
-
-        num_points = len(df[frequency].unique())
+        df = df.group_by(frequency).agg(pl.col(column).sum())
 
         chart_width = 'container'
 
