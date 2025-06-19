@@ -245,8 +245,9 @@ class DataPull:
                 )
             )
             df = df.with_columns(
-                pl.when(pl.col("descripcion") == "2016-05-15 00:00:00").then(pl.col("year") == 2015)
-                  .otherwise(pl.col("year"))
+                pl.when(pl.col("descripcion") == "2016-05-15 00:00:00")
+                .then(pl.col("year") == 2015)
+                .otherwise(pl.col("year"))
             )
             df = df.with_columns(
                 date=pl.date(pl.col("year").cast(pl.String), pl.col("month"), 1)
@@ -702,7 +703,7 @@ class DataPull:
         acs = acs.rename({col: col.lower().replace("-", "_") for col in acs.columns})
 
         return acs
-    
+
     def download_with_retry(self, url, file_path):
         TARGET_HTML_SIZE = 3893
 
@@ -714,7 +715,9 @@ class DataPull:
                 logging.info(f"✅ Downloaded {file_path} with size {file_size} bytes")
                 break
             else:
-                logging.info(f"⚠️ File not ready for download, retrying in 30 seconds...")
+                logging.info(
+                    f"⚠️ File not ready for download, retrying in 30 seconds..."
+                )
                 os.remove(file_path)
                 time.sleep(30)
 
@@ -793,28 +796,20 @@ class DataPull:
         if "AwardTable" not in self.conn.sql("SHOW TABLES;").df().get("name").tolist():
             init_awards_table(self.data_file)
 
-        try:
-            result = self.conn.sql(
-                f"SELECT COUNT(*) FROM AwardTable WHERE fiscal_year = {fiscal_year}"
-            )
-            if result.fetchone()[0] == 0:
-                df = self.pull_awards_by_year(fiscal_year)
-                if df.is_empty():
-                    return self.conn.sql("SELECT * FROM 'AwardTable';").pl()
-                self.conn.sql("INSERT INTO 'AwardTable' BY NAME SELECT * FROM df;")
-                logging.info(f"Inserted fiscal year {fiscal_year} to sqlite table.")
-            else:
-                logging.info(f"Fiscal year {fiscal_year} already in db.")
-        except Exception as e:
-            logging.error(
-                f"Error inserting fiscal year {fiscal_year} to sqlite table. {e}"
-            )
-            return self.conn.sql("SELECT * FROM 'AwardTable';").pl()
-        return self.conn.sql("SELECT * FROM 'AwardTable';").pl()
+        df = self.conn.sql(
+            f"SELECT * FROM AwardTable WHERE fiscal_year = {fiscal_year}"
+        ).pl()
+        if df.is_empty():
+            print(fiscal_year)
+            df = self.pull_awards_by_year(fiscal_year)
+            self.conn.sql("INSERT INTO 'AwardTable' BY NAME SELECT * FROM df;")
+            logging.info(f"Inserted fiscal year {fiscal_year} to sqlite table.")
+        else:
+            logging.info(f"Fiscal year {fiscal_year} already in db.")
 
     def clean_energy_df(self) -> pl.DataFrame:
         input_csv_path = f"{self.saving_dir}/raw/aee-meta-ultimo.csv"
-        text_col       = "mes"
+        text_col = "mes"
         pdf = pd.read_csv(input_csv_path, encoding="latin1", dtype=str)
 
         def clean_name(col: str) -> str:
@@ -822,19 +817,26 @@ class DataPull:
             col = re.sub(r"\s+", " ", col)
             col = col.replace("/", "_")
             for old, new in [
-                ("(", ""), (")", ""),
-                ("$", "dollar"), ("¢", "cent"),
-                ("#", "amount"), ("%", "porcentage"),
-                ("ó", "o"), ("á", "a"), ("é", "e"), ("í", "i"), ("ú", "u"),
+                ("(", ""),
+                (")", ""),
+                ("$", "dollar"),
+                ("¢", "cent"),
+                ("#", "amount"),
+                ("%", "porcentage"),
+                ("ó", "o"),
+                ("á", "a"),
+                ("é", "e"),
+                ("í", "i"),
+                ("ú", "u"),
             ]:
                 col = col.replace(old, new)
             col = col.replace("-", "_").replace(" ", "_")
             col = re.sub(r"_+", "_", col)
             return col.strip("_")
 
-        orig_cols    = pdf.columns.to_list()
+        orig_cols = pdf.columns.to_list()
         cleaned_cols = [clean_name(c) for c in orig_cols]
-        pdf.columns  = cleaned_cols
+        pdf.columns = cleaned_cols
 
         df = pl.from_pandas(pdf)
         exprs = []
@@ -842,44 +844,37 @@ class DataPull:
 
         for col in cols_to_process:
             cleaned = (
-                pl.col(col)
-                    .str.replace_all(",", "")
-                    .str.replace_all(r"^\s+|\s+$", "")
+                pl.col(col).str.replace_all(",", "").str.replace_all(r"^\s+|\s+$", "")
             )
             if col == text_col:
                 expr = (
                     pl.when(cleaned.is_in(["", "-", None]))
-                        .then(None)
-                        .otherwise(cleaned)
+                    .then(None)
+                    .otherwise(cleaned)
                 ).alias(col)
             else:
                 expr = (
-                    pl.when(cleaned.is_in(["", "-", None]))
+                    (
+                        pl.when(cleaned.is_in(["", "-", None]))
                         .then(None)
                         .otherwise(cleaned)
-                ).cast(pl.Float64).alias(col)
+                    )
+                    .cast(pl.Float64)
+                    .alias(col)
+                )
             exprs.append(expr)
 
         df_clean = df.select(exprs)
 
         return df_clean
 
-
     def insert_energy_data(self):
-        existing = (
-            self.conn
-                .sql("SHOW TABLES;")
-                .df()
-                .get("name")
-                .tolist()
-        )
+        existing = self.conn.sql("SHOW TABLES;").df().get("name").tolist()
         if "EnergyTable" not in existing:
             init_energy_table(self.data_file)
 
         try:
-            count = self.conn \
-                            .sql("SELECT COUNT(*) FROM EnergyTable;") \
-                            .fetchone()[0]
+            count = self.conn.sql("SELECT COUNT(*) FROM EnergyTable;").fetchone()[0]
             if count == 0:
                 df_clean = self.clean_energy_df()
                 self.conn.register("tmp_energy", df_clean)
@@ -887,7 +882,9 @@ class DataPull:
                     INSERT INTO EnergyTable
                     SELECT * FROM tmp_energy;
                 """)
-                logging.info("Inserted cleaned energy data into EnergyTable (via Polars in RAM).")
+                logging.info(
+                    "Inserted cleaned energy data into EnergyTable (via Polars in RAM)."
+                )
             else:
                 logging.info("EnergyTable already contains data; skipping load.")
         except Exception as e:
@@ -901,8 +898,8 @@ class DataPull:
         file_path = f"{self.saving_dir}/raw/aee-meta-ultimo.csv"
         if os.path.exists(file_path) and not update:
             logging.info(f"[DataPull] {file_path} ya existe — omito descarga.")
-            return file_path    
-        
+            return file_path
+
         self.pull_file(url, file_path, False)
         logging.info(f"Downloaded file to {file_path}")
         return file_path
@@ -1561,20 +1558,52 @@ class DataPull:
         agency_list = df.select("awarding_agency_name").unique().to_series().to_list()
 
         month_map = {
-            1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 
-            7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec', 
+            1: "Jan",
+            2: "Feb",
+            3: "Mar",
+            4: "Apr",
+            5: "May",
+            6: "Jun",
+            7: "Jul",
+            8: "Aug",
+            9: "Sep",
+            10: "Oct",
+            11: "Nov",
+            12: "Dec",
         }
         months = list(month_map.values())
-        
-        df = df.with_columns([
-            pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").alias("parsed_date"),
-            ((pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.month()).alias("month")),
-            ((pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.year()).alias("year"))
-        ])
+
         df = df.with_columns(
-            pl.col("month").cast(pl.String).replace(month_map).alias("month_name").cast(pl.String),
-            (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("pr_fiscal_year"),
-            pl.col('awarding_agency_name').str.to_lowercase().str.replace_all(" ", "_")
+            [
+                pl.col("action_date")
+                .str.strptime(pl.Date, "%Y-%m-%d")
+                .alias("parsed_date"),
+                (
+                    (
+                        pl.col("action_date")
+                        .str.strptime(pl.Date, "%Y-%m-%d")
+                        .dt.month()
+                    ).alias("month")
+                ),
+                (
+                    (
+                        pl.col("action_date")
+                        .str.strptime(pl.Date, "%Y-%m-%d")
+                        .dt.year()
+                    ).alias("year")
+                ),
+            ]
+        )
+        df = df.with_columns(
+            pl.col("month")
+            .cast(pl.String)
+            .replace(month_map)
+            .alias("month_name")
+            .cast(pl.String),
+            (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias(
+                "pr_fiscal_year"
+            ),
+            pl.col("awarding_agency_name").str.to_lowercase().str.replace_all(" ", "_"),
         )
         agency = agency.lower()
         type = type.lower()
@@ -1583,60 +1612,88 @@ class DataPull:
         df = df.filter(pl.col("awarding_agency_name") == agency)
 
         match type:
-            case 'fiscal':
+            case "fiscal":
                 grouped_df = df.with_columns(
                     (pl.col("pr_fiscal_year")).cast(pl.String).alias("time_period")
                 )
-                grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
-            case 'yearly':
+                grouped_df = grouped_df.group_by(
+                    ["time_period", "awarding_agency_name"]
+                ).agg(pl.col(agg_expr).sum())
+            case "yearly":
                 grouped_df = df.with_columns(
                     (pl.col("year")).cast(pl.String).alias("time_period")
                 )
-                grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
-            case 'quarterly':
+                grouped_df = grouped_df.group_by(
+                    ["time_period", "awarding_agency_name"]
+                ).agg(pl.col(agg_expr).sum())
+            case "quarterly":
                 quarter_expr = (
-                    pl.when(pl.col("month").is_in([1, 2, 3])).then(pl.lit("q1"))
-                    .when(pl.col("month").is_in([4, 5, 6])).then(pl.lit("q2"))
-                    .when(pl.col("month").is_in([7, 8, 9])).then(pl.lit("q3"))
-                    .when(pl.col("month").is_in([10, 11, 12])).then(pl.lit("q4"))
+                    pl.when(pl.col("month").is_in([1, 2, 3]))
+                    .then(pl.lit("q1"))
+                    .when(pl.col("month").is_in([4, 5, 6]))
+                    .then(pl.lit("q2"))
+                    .when(pl.col("month").is_in([7, 8, 9]))
+                    .then(pl.lit("q3"))
+                    .when(pl.col("month").is_in([10, 11, 12]))
+                    .then(pl.lit("q4"))
                     .otherwise(pl.lit("q?"))
                 )
                 grouped_df = df.with_columns(
                     (pl.col("year").cast(pl.String) + quarter_expr).alias("time_period")
                 )
-                grouped_df = grouped_df.group_by(['time_period', 'awarding_agency_name']).agg(pl.col(agg_expr).sum())
-            case 'monthly':
-                results = pl.DataFrame(schema={
-                    "month_name": pl.String,
-                    "awarding_agency_name": pl.String,
-                    "year": pl.Int32,
-                    "federal_action_obligation": pl.Float32,
-                    "time_period": pl.String,
-                })
-                months = pl.DataFrame({'month_name': months}).select([
-                    pl.col("month_name").cast(pl.String)
-                ])
+                grouped_df = grouped_df.group_by(
+                    ["time_period", "awarding_agency_name"]
+                ).agg(pl.col(agg_expr).sum())
+            case "monthly":
+                results = pl.DataFrame(
+                    schema={
+                        "month_name": pl.String,
+                        "awarding_agency_name": pl.String,
+                        "year": pl.Int32,
+                        "federal_action_obligation": pl.Float32,
+                        "time_period": pl.String,
+                    }
+                )
+                months = pl.DataFrame({"month_name": months}).select(
+                    [pl.col("month_name").cast(pl.String)]
+                )
                 for year in df.select(pl.col("year")).unique().to_series().to_list():
                     df_year = df.filter(pl.col("year") == year)
                     df_year = months.join(df_year, on="month_name", how="outer")
-                    df_year = df_year.select(["month_name", "federal_action_obligation", "awarding_agency_name", "year"]).with_columns(
-                        pl.col('year').fill_null(year),
+                    df_year = df_year.select(
+                        [
+                            "month_name",
+                            "federal_action_obligation",
+                            "awarding_agency_name",
+                            "year",
+                        ]
+                    ).with_columns(
+                        pl.col("year").fill_null(year),
                         pl.col("federal_action_obligation").fill_null(0),
-                        pl.col('awarding_agency_name').fill_null(agency)
+                        pl.col("awarding_agency_name").fill_null(agency),
                     )
-                    df_year = df_year.group_by(['month_name', 'awarding_agency_name', 'year']).agg(pl.col(agg_expr).sum())
+                    df_year = df_year.group_by(
+                        ["month_name", "awarding_agency_name", "year"]
+                    ).agg(pl.col(agg_expr).sum())
                     df_year = df_year.with_columns(
-                        (pl.col("year").cast(pl.Utf8) + pl.col("month_name")).alias("time_period")
+                        (pl.col("year").cast(pl.Utf8) + pl.col("month_name")).alias(
+                            "time_period"
+                        )
                     )
                     results = pl.concat([results, df_year])
                 grouped_df = results
-                grouped_df = grouped_df.group_by(['awarding_agency_name', 'time_period']).agg(pl.col(agg_expr).sum())
+                grouped_df = grouped_df.group_by(
+                    ["awarding_agency_name", "time_period"]
+                ).agg(pl.col(agg_expr).sum())
                 grouped_df = grouped_df.with_columns(
-                    pl.col("time_period").str.strptime(pl.Date, "%Y%b", strict=False).dt.strftime("%Y-%m").alias("parsed_period")
+                    pl.col("time_period")
+                    .str.strptime(pl.Date, "%Y%b", strict=False)
+                    .dt.strftime("%Y-%m")
+                    .alias("parsed_period")
                 ).sort("parsed_period")
-        
+
         return grouped_df, agency_list
-    
+
     def process_awards_by_category(self, year, quarter, month, type, category):
         df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
 
@@ -1646,16 +1703,28 @@ class DataPull:
             for col in df.columns
             if col not in excluded_columns and "date" not in col.lower()
         ]
-        
-        df = df.with_columns([
-            pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").alias("parsed_date"),
-            (pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.month()).alias("month"),
-            (pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.year()).alias("year"),
-            pl.col(category).str.to_lowercase()
-        ])
-        df = df.with_columns([
-            (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("pr_fiscal_year"),
-        ])
+
+        df = df.with_columns(
+            [
+                pl.col("action_date")
+                .str.strptime(pl.Date, "%Y-%m-%d")
+                .alias("parsed_date"),
+                (
+                    pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.month()
+                ).alias("month"),
+                (
+                    pl.col("action_date").str.strptime(pl.Date, "%Y-%m-%d").dt.year()
+                ).alias("year"),
+                pl.col(category).str.to_lowercase(),
+            ]
+        )
+        df = df.with_columns(
+            [
+                (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias(
+                    "pr_fiscal_year"
+                ),
+            ]
+        )
         type = type.lower()
 
         agg_expr = "federal_action_obligation"
@@ -1664,37 +1733,49 @@ class DataPull:
             raise ValueError(f"Year {year} not found in the DataFrame.")
 
         match type:
-            case 'fiscal':
+            case "fiscal":
                 df_filtered = df.filter(pl.col("pr_fiscal_year") == year)
-            case 'yearly':
+            case "yearly":
                 df_filtered = df.filter(pl.col("year") == year)
-            case 'monthly':
-                df_filtered = df.filter((pl.col("month") == month) & (pl.col("year") == year))
-            case 'quarterly':
+            case "monthly":
+                df_filtered = df.filter(
+                    (pl.col("month") == month) & (pl.col("year") == year)
+                )
+            case "quarterly":
                 quarter_to_calendar_month = {
-                    1: [1, 2, 3], 
-                    2: [4, 5, 6], 
+                    1: [1, 2, 3],
+                    2: [4, 5, 6],
                     3: [7, 8, 9],
-                    4: [10, 11, 12]
+                    4: [10, 11, 12],
                 }
-                df_filtered = df.filter((pl.col("month").is_in(quarter_to_calendar_month[quarter])) & (pl.col("year") == year))
+                df_filtered = df.filter(
+                    (pl.col("month").is_in(quarter_to_calendar_month[quarter]))
+                    & (pl.col("year") == year)
+                )
         grouped_df = df_filtered.group_by([category]).agg(pl.col(agg_expr).sum())
 
         return grouped_df, columns
-    
 
     def process_energy_data(
-    self,
-    period: str = "monthly",  
-    metric: str = "generacion_neta_mkwh"
-) -> pl.DataFrame:
+        self, period: str = "monthly", metric: str = "generacion_neta_mkwh"
+    ) -> pl.DataFrame:
         self.pull_energy_data()
         self.insert_energy_data()
         df = self.conn.sql("SELECT * FROM EnergyTable").pl()
 
         month_map = {
-            1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
-            7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec',
+            1: "Jan",
+            2: "Feb",
+            3: "Mar",
+            4: "Apr",
+            5: "May",
+            6: "Jun",
+            7: "Jul",
+            8: "Aug",
+            9: "Sep",
+            10: "Oct",
+            11: "Nov",
+            12: "Dec",
         }
         months = list(month_map.values())
         excluded_columns = ["mes"]
@@ -1705,12 +1786,16 @@ class DataPull:
         ]
         df = (
             df.with_columns(
-                pl.col("mes").str.strptime(pl.Date, "%m/%d/%Y", strict=False).alias("date")
+                pl.col("mes")
+                .str.strptime(pl.Date, "%m/%d/%Y", strict=False)
+                .alias("date")
             )
-            .with_columns([
-                pl.col("date").dt.year().alias("year"),
-                pl.col("date").dt.month().alias("month"),
-            ])
+            .with_columns(
+                [
+                    pl.col("date").dt.year().alias("year"),
+                    pl.col("date").dt.month().alias("month"),
+                ]
+            )
             .with_columns(
                 pl.col("month").cast(pl.String).replace(month_map).alias("month_name"),
                 (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias("fiscal"),
@@ -1732,35 +1817,39 @@ class DataPull:
 
             case "yearly":
                 grouped_df = (
-                    df.with_columns(
-                        pl.col("year").cast(pl.String).alias("time_period")
-                    )
+                    df.with_columns(pl.col("year").cast(pl.String).alias("time_period"))
                     .group_by("time_period")
                     .agg(agg_expr)
                 )
             case "quarterly":
                 quarter_expr = (
-                    pl.when(pl.col("month").is_in([1, 2, 3])).then(pl.lit("q1"))
-                    .when(pl.col("month").is_in([4, 5, 6])).then(pl.lit("q2"))
-                    .when(pl.col("month").is_in([7, 8, 9])).then(pl.lit("q3"))
+                    pl.when(pl.col("month").is_in([1, 2, 3]))
+                    .then(pl.lit("q1"))
+                    .when(pl.col("month").is_in([4, 5, 6]))
+                    .then(pl.lit("q2"))
+                    .when(pl.col("month").is_in([7, 8, 9]))
+                    .then(pl.lit("q3"))
                     .otherwise(pl.lit("q4"))
                 )
                 grouped_df = (
                     df.with_columns(
-                        (pl.col("year").cast(pl.String) + "-" + quarter_expr)
-                            .alias("time_period")
+                        (pl.col("year").cast(pl.String) + "-" + quarter_expr).alias(
+                            "time_period"
+                        )
                     )
                     .group_by("time_period")
                     .agg(agg_expr)
                 )
 
             case "monthly":
-                results = pl.DataFrame(schema={
-                    "month_name":  pl.String,
-                    metric:        pl.Float64,
-                    "year":        pl.Int32,
-                    "time_period": pl.String,
-                })
+                results = pl.DataFrame(
+                    schema={
+                        "month_name": pl.String,
+                        metric: pl.Float64,
+                        "year": pl.Int32,
+                        "time_period": pl.String,
+                    }
+                )
                 months_df = pl.DataFrame({"month_name": months})
 
                 for yr in df.select("year").unique().to_series():
@@ -1768,29 +1857,24 @@ class DataPull:
 
                     df_year = months_df.join(df_year, on="month_name", how="left")
                     df_year = df_year.select("month_name", metric, "year").with_columns(
-                        pl.col("year").fill_null(yr),
-                        pl.col(metric).fill_null(0)
+                        pl.col("year").fill_null(yr), pl.col(metric).fill_null(0)
                     )
                     df_year = df_year.group_by(["month_name", "year"]).agg(agg_expr)
-                    df_year = df_year.with_columns(
-                        pl.col(metric).cast(pl.Float64)
-                    )
+                    df_year = df_year.with_columns(pl.col(metric).cast(pl.Float64))
 
-                    df_year = (
-                        df_year
-                        .with_columns(
-                            (pl.col("year").cast(pl.String) + pl.col("month_name"))
-                                .alias("time_period")
+                    df_year = df_year.with_columns(
+                        (pl.col("year").cast(pl.String) + pl.col("month_name")).alias(
+                            "time_period"
                         )
-                        .select("month_name", metric, "year", "time_period")
-                    )
+                    ).select("month_name", metric, "year", "time_period")
 
                     results = pl.concat([results, df_year])
 
                 grouped_df = results
 
             case _:
-                raise ValueError("period debe ser monthly | quarterly | yearly | fiscal")
+                raise ValueError(
+                    "period debe ser monthly | quarterly | yearly | fiscal"
+                )
 
-        return grouped_df, columns                
-    
+        return grouped_df, columns
