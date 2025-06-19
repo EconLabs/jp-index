@@ -424,6 +424,10 @@ class DataGraph(DataIndex):
             raise ValueError("Invalid type. Use 'data', 'cycle', or 'trend'.")
         
         df = df.select(["date"] + selected_colums)
+        columns_dict = [
+            {"value": col, "label": col.replace("_", " ").capitalize()}
+            for col in selected_colums
+        ]
 
         chart_width = "container"
         
@@ -450,5 +454,4 @@ class DataGraph(DataIndex):
             .configure_view(fill="#e6f7ff")
             .configure_axis(gridColor="white", grid=True)
         )
-        chart.save(f"{type}_{column}.html")
-        return chart, selected_colums
+        return chart, columns_dict
