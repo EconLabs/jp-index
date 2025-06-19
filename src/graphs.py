@@ -401,3 +401,54 @@ class DataGraph(DataIndex):
         )
 
         return chart, columns
+    
+    def create_jp_cycles_graphs(self, type: str, column: str):
+        df = pl.from_pandas(self.jp_cycle_data())
+
+        if type == "data":
+            selected_colums = [
+                col for col in df.columns
+                if "cycle" not in col and "trend" not in col and col != "date" and col != "year" and col != "quarter"
+            ]
+        elif type == "cycle":
+            selected_colums = [
+                col for col in df.columns
+                if "cycle" in col
+            ]
+        elif type == "trend":
+            selected_colums = [
+                col for col in df.columns
+                if "trend" in col
+            ]
+        else:
+            raise ValueError("Invalid type. Use 'data', 'cycle', or 'trend'.")
+        
+        df = df.select(["date"] + selected_colums)
+
+        chart_width = "container"
+        
+        chart = (
+            (
+                alt.Chart(df)
+                .mark_line()
+                .encode(
+                    x=alt.X(
+                        f"date:N", title="",
+                    ),
+                    y=alt.Y(f"{column}:Q", title=f""),
+                    tooltip=[
+                        alt.Tooltip(f"date:N", title="Periodo"),
+                        alt.Tooltip(
+                            f"{column}:Q",
+                        ),
+                    ],
+                )
+                .properties(
+                    width=chart_width, padding={"top": 10, "bottom": 10, "left": 30}
+                )
+            )
+            .configure_view(fill="#e6f7ff")
+            .configure_axis(gridColor="white", grid=True)
+        )
+        chart.save(f"{type}_{column}.html")
+        return chart, selected_colums
