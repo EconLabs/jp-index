@@ -452,3 +452,114 @@ class DataGraph(DataIndex):
         )
 
         return chart, columns_dict
+
+    def create_spending_chart(self, period: str, metric: str):
+
+        df_grouped, _ = self.process_spending_data(period, metric)
+
+        month_map = {
+            "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4,
+            "May": 5, "Jun": 6, "Jul": 7, "Aug": 8,
+            "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
+        }
+        months_lookup = pl.DataFrame({
+            "month_name": list(month_map.keys()),
+            "month_int":   list(month_map.values())
+        })
+
+        df_aux = df_grouped.with_columns([
+            # año
+            pl.col("time_period")
+            .str.extract(r"^(\d+)", 1)
+            .cast(pl.Int32)
+            .alias("year_int"),
+
+            # captura trimestre (1–4) o mes numérico
+            pl.when(pl.col("time_period").str.contains(r"-q[1-4]$"))
+            .then(pl.col("time_period")
+                    .str.extract(r"-q([1-4])$", 1)
+                    .cast(pl.Int32))
+            .when(pl.col("time_period").str.contains(r"-(\d+)$"))
+            .then(pl.col("time_period")
+                    .str.extract(r"-(\d+)$", 1)
+                    .cast(pl.Int32))
+            .otherwise(pl.lit(None))
+            .alias("period_int_raw"),
+
+            # captura nombre de mes abreviado (Jan, Feb, …)
+            pl.when(pl.col("time_period").str.contains(r"-[A-Za-z]+$"))
+            .then(pl.col("time_period")
+                    .str.extract(r"-(\w+)$", 1))
+            .otherwise(pl.lit(None))
+            .alias("month_name_raw")
+        ])
+
+        # 4) Une con lookup de meses para obtener month_int
+        df_joined = df_aux.join(
+            months_lookup,
+            left_on="month_name_raw",
+            right_on="month_name",
+            how="left"
+        )
+
+        # 5) Construye period_int final: prioriza periodo crudo (trimestre/numérico), luego month_int, luego 1
+        df_sorted = (
+            df_joined
+            .with_columns([
+                pl.coalesce([
+                    pl.col("period_int_raw"),
+                    pl.col("month_int"),
+                    pl.lit(1)
+                ]).alias("period_int")
+            ])
+            .sort(["year_int", "period_int"])
+            .drop([
+                "year_int",
+                "period_int_raw",
+                "month_name_raw",
+                "month_name",
+                "month_int",
+                "period_int"
+            ])
+        )
+        x_order = df_sorted["time_period"].to_list()
+
+        if period.lower() == "monthly":
+            tick_vals = x_order[::6]
+        elif period.lower() == "quarterly":
+            tick_vals = x_order[::3]
+        else:
+            tick_vals = x_order
+
+        data = df_sorted.to_dicts()
+        chart = (
+            alt.Chart(alt.Data(values=data))
+            .mark_line(point=True)
+            .encode(
+                x=alt.X(
+                    "time_period:N",
+                    title="Periodo",
+                    sort=x_order,
+                    axis=alt.Axis(labelAngle=-45, values=tick_vals)
+                ),
+                y=alt.Y(
+                    f"{metric}:Q",
+                    title="USD",
+                    axis=alt.Axis(format=".0f")
+                ),
+                tooltip=[
+                    alt.Tooltip("time_period:N", title="Periodo"),
+                    alt.Tooltip(f"{metric}:Q", title="USD", format=".0f")
+                ]
+            )
+            .properties(
+                width="container",
+                height=300,
+                title=f"Evolución de {metric.replace('_',' ')} ({period.capitalize()})"
+            )
+            .configure_view(fill="#e6f7ff")
+            .configure_axis(grid=True, gridColor="white")
+            .interactive(bind_y=False)
+        )
+
+        return chart, x_order
