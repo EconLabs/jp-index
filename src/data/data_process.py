@@ -1,7 +1,6 @@
 import polars as pl
 import pandas as pd
 import statsmodels.api as sm
-from statsmodels.tsa.vector_ar.var_model import var_acf
 
 from .data_pull import DataPull
 
@@ -166,9 +165,38 @@ class DataIndex(DataPull):
 
         variables = [var for var in variables if var not in remove and var not in sum]
 
+        new_columns = [
+            "Índice de Actividad Económica del Banco de Desarrollo Económico",
+            "Grupo Trabajador (Miles de Personas) AJUSTADO ESTACIONALMENTE",
+            "Población Civil No-Institucional (Miles de Personas)",
+            "Empleo No Agrícola: Todas las Industrias (Miles de Personas) AJUSTADOS ESTACIONALMENTE",
+            "Empleo No Agrícola: Todas las Industrias (Miles de Personas)",
+            "Total de Registros en Hoteles y Paradores",
+            "Número de Unidades de Vivienda Vendidas en Puerto Rico",
+            "Ingreso Neto al Fondo General - Miles de Dólares",
+            "Generación de Energía Eléctrica (Millones de Kilovatios / Hora)",
+        ]
+
+        original_columns = [
+            "indice_de_actividad_economica",
+            "encuesta_de_grupo_trabajador_ajustada_estacionalmente",
+            "encuesta_de_grupo_trabajador",
+            "encuesta_de_establecimientos_ajustados_estacionalmente",
+            "encuesta_de_establecimientos",
+            "indicadores_de_turismo",
+            "indicadores_de_construccion",
+            "indicadores_de_ingresos_netos",
+            "indicadores_de_energia_electrica",
+        ]
+
+        final_columns = {}
+        for orig, new in zip(new_columns, original_columns):
+            final_columns[new + "_mean"] = orig
+            final_columns[new + "_sum"] = orig
+
         match time_frame:
             case "monthly":
-                return df.sort(["year", "month"])
+                return df.sort(["year", "month"]).rename(final_columns)
             case "quarterly":
                 return (
                     df.group_by(["year", "quarter"])
@@ -177,12 +205,14 @@ class DataIndex(DataPull):
                         pl.col(sum).sum().name.suffix("_sum"),
                     )
                     .sort(["year", "quarter"])
+                    .rename(final_columns)
                 )
             case "yearly":
                 return (
                     df.group_by("year")
                     .agg(pl.col(variables).mean(), pl.col(sum).sum())
                     .sort(["year"])
+                    .rename(final_columns)
                 )
             case "fiscal":
                 return (
@@ -192,6 +222,7 @@ class DataIndex(DataPull):
                         pl.col(sum).sum().name.suffix("_sum"),
                     )
                     .sort(["fiscal"])
+                    .rename(final_columns)
                 )
             case _:
                 raise ValueError("Invalid aggregation")
