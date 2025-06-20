@@ -401,3 +401,54 @@ class DataGraph(DataIndex):
         )
 
         return chart, columns
+    
+    def create_jp_cycles_graphs(self, column: str):
+        df = pl.from_pandas(self.jp_cycle_data())
+
+        selected_colums = [
+            col for col in df.columns
+            if col != "date" and col != "year" and col != "quarter"
+        ]
+        
+        df = df.select(["date"] + selected_colums)
+        columns_dict = [
+            {"value": col, "label": col.replace("_", " ").capitalize()}
+            for col in selected_colums
+            if 'cycle' not in col and 'trend' not in col
+        ]
+
+        df = df[["date", column, f"{column}_cycle", f"{column}_trend"]].rename({
+            column: "Original",
+            f"{column}_cycle": "Cycle",
+            f"{column}_trend": "Trend"
+        })
+        df = df.melt(
+            id_vars="date",
+            value_vars=["Original", "Cycle", "Trend"]
+        )
+
+        chart_width = "container"
+        
+        chart = (
+            (
+                alt.Chart(df)
+                .mark_line()
+                .encode(
+                    x=alt.X("date:N", title=""),
+                    y=alt.Y("value:Q", title=""),
+                    color=alt.Color("variable:N", title=""),
+                    tooltip=[
+                        alt.Tooltip("date:N", title="Periodo"),
+                        alt.Tooltip("variable:N", title="Serie"),
+                        alt.Tooltip("value:Q", title="Valor")
+                    ]
+                )
+                .properties(
+                    width=chart_width, padding={"top": 10, "bottom": 10, "left": 30}
+                )
+            )
+            .configure_view(fill="#e6f7ff")
+            .configure_axis(gridColor="white", grid=True)
+        )
+
+        return chart, columns_dict
