@@ -1,6 +1,7 @@
 import polars as pl
 import pandas as pd
 import statsmodels.api as sm
+from statsmodels.tsa.vector_ar.var_model import var_acf
 
 from .data_pull import DataPull
 
@@ -74,46 +75,58 @@ class DataIndex(DataPull):
                 return df.group_by("fiscal").agg(aggregation_exprs)
             case _:
                 raise ValueError("Invalid aggregation")
-            
-    def apply_data_type(self, df: pl.DataFrame, data_type: str):
-        value_columns = [col for col in df.columns if col not in {"year", "month", "fiscal", "date", "quarter"}]
 
-        lag_df = df.select(["year", "month"] + value_columns).with_columns([
-            (pl.col("year") + 1).alias("year")
-        ]).rename({col: f"{col}_lag" for col in value_columns})
+    def apply_data_type(self, df: pl.DataFrame, data_type: str):
+        value_columns = [
+            col
+            for col in df.columns
+            if col not in {"year", "month", "fiscal", "date", "quarter"}
+        ]
+
+        lag_df = (
+            df.select(["year", "month"] + value_columns)
+            .with_columns([(pl.col("year") + 1).alias("year")])
+            .rename({col: f"{col}_lag" for col in value_columns})
+        )
 
         df = df.join(lag_df, on=["year", "month"], how="left")
 
         for col in value_columns:
-            if (data_type == "cambio_porcentual"):
-                transformation = (((pl.col(col) - pl.col(f"{col}_lag")).cast(pl.Float64))/((pl.col(f"{col}_lag").cast(pl.Float64)))*100).alias(col)
+            if data_type == "cambio_porcentual":
+                transformation = (
+                    ((pl.col(col) - pl.col(f"{col}_lag")).cast(pl.Float64))
+                    / (pl.col(f"{col}_lag").cast(pl.Float64))
+                    * 100
+                ).alias(col)
             else:
                 transformation = (pl.col(col) - pl.col(f"{col}_lag")).alias(col)
-                
-            df = df.with_columns(
-                transformation
-            )
+
+            df = df.with_columns(transformation)
         df = df.select(df.columns)
 
-        df = df.with_columns([
-            pl.col(col).dt.total_microseconds().alias(col) if df.schema[col] == pl.Duration("us") else pl.col(col)
-            for col in df.columns
-        ])
+        df = df.with_columns(
+            [
+                pl.col(col).dt.total_microseconds().alias(col)
+                if df.schema[col] == pl.Duration("us")
+                else pl.col(col)
+                for col in df.columns
+            ]
+        )
         return df
-            
+
     def process_consumer_data(self, time_frame: str, data_type: str) -> pl.DataFrame:
-        if data_type == 'cambio_porcentual':
-            df = self.consumer_data('monthly')
+        if data_type == "cambio_porcentual":
+            df = self.consumer_data("monthly")
             df = self.apply_data_type(df, data_type)
             df = df.filter(pl.col("year") != 1984)
-        elif data_type == 'primera_diferencia':
-            df = self.consumer_data('monthly')
+        elif data_type == "primera_diferencia":
+            df = self.consumer_data("monthly")
             df = self.apply_data_type(df, data_type)
             df = df.filter(pl.col("year") != 1984)
-        elif data_type == 'indices_precio':
+        elif data_type == "indices_precio":
             df = self.consumer_data(time_frame)
             df = df
-  
+
         return df
 
     def jp_indicator_data(self, time_frame: str) -> pl.DataFrame:
@@ -143,18 +156,43 @@ class DataIndex(DataPull):
         df = self.insert_jp_index()
         variables = df.columns
         remove = ["date", "month", "year", "quarter", "fiscal"]
-        variables = [var for var in variables if var not in remove]
-        aggregation_exprs = [pl.col(var).sum().alias(var) for var in variables]
+        sum = [
+            "encuesta_de_establecimientos",
+            "indicadores_de_turismo",
+            "indicadores_de_construccion",
+            "indicadores_de_ingresos_netos",
+            "indicadores_de_energia_electrica",
+        ]
+
+        variables = [var for var in variables if var not in remove and var not in sum]
 
         match time_frame:
             case "monthly":
-                return df
+                return df.sort(["year", "month"])
             case "quarterly":
-                return df.group_by(["year", "quarter"]).agg(aggregation_exprs)
+                return (
+                    df.group_by(["year", "quarter"])
+                    .agg(
+                        pl.col(variables).mean().name.suffix("_mean"),
+                        pl.col(sum).sum().name.suffix("_sum"),
+                    )
+                    .sort(["year", "quarter"])
+                )
             case "yearly":
-                return df.group_by("year").agg(aggregation_exprs)
+                return (
+                    df.group_by("year")
+                    .agg(pl.col(variables).mean(), pl.col(sum).sum())
+                    .sort(["year"])
+                )
             case "fiscal":
-                return df.group_by("fiscal").agg(aggregation_exprs)
+                return (
+                    df.group_by("fiscal")
+                    .agg(
+                        pl.col(variables).mean().name.suffix("_mean"),
+                        pl.col(sum).sum().name.suffix("_sum"),
+                    )
+                    .sort(["fiscal"])
+                )
             case _:
                 raise ValueError("Invalid aggregation")
 
@@ -179,4 +217,3 @@ class DataIndex(DataPull):
             data[f"{col}_cycle"] = cycle
             data[f"{col}_trend"] = trend
         return data
-
