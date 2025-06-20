@@ -414,6 +414,7 @@ class DataGraph(DataIndex):
         columns_dict = [
             {"value": col, "label": col.replace("_", " ").capitalize()}
             for col in selected_colums
+            if 'cycle' not in col and 'trend' not in col
         ]
 
         df = df[["date", column, f"{column}_cycle", f"{column}_trend"]].rename({
