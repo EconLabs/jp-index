@@ -20,6 +20,7 @@ from ..models import (
     init_consumer_table,
     init_indicators_table,
     init_energy_table,
+    init_goverment_spending_table,
 )
 
 
@@ -1878,3 +1879,220 @@ class DataPull:
                 )
 
         return grouped_df, columns
+
+    def rename_gastos_columns(self, save_csv: bool = True):
+        cleaned_label_path =  f"{self.saving_dir}processed/cleaned_label.csv"
+        gastos_processed_dir = f"{self.saving_dir}raw"
+        input_csv = os.path.join(gastos_processed_dir, "gastos_processed.csv")
+        output_csv = os.path.join(gastos_processed_dir, "gastos_renamed.csv")
+
+        mapping_df = pd.read_csv(cleaned_label_path, encoding='utf-8')
+        code_col, label_col = mapping_df.columns[0], mapping_df.columns[1]
+        mapping = dict(zip(mapping_df[code_col], mapping_df[label_col]))
+
+        df = pd.read_csv(input_csv, encoding='utf-8')
+        df = df.drop(columns=["Unnamed: 0", "years"], errors="ignore")
+        renamed_df = df.rename(columns=mapping)
+
+        if save_csv:
+            os.makedirs(gastos_processed_dir, exist_ok=True)
+            renamed_df.to_csv(output_csv, index=False, encoding='utf-8')
+            print(f"Saved renamed CSV to {output_csv}")
+            print(renamed_df.head(5))
+        return renamed_df
+    
+    def clean_labels(self):
+        input_csv_path = f"{self.saving_dir}/raw/labels.csv"
+        output_dir = f"{self.saving_dir}/processed/"
+        output_csv = os.path.join(output_dir, "cleaned_label.csv")
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        pdf = pd.read_csv(input_csv_path, encoding="utf-8", dtype=str)
+        pdf = pdf.drop(columns=["Unnamed: 0", "years"], errors="ignore")
+        def normalize(text: str) -> str:
+            text = text.lower()
+            text = re.sub(r"\s+", " ", text)
+            for src, tgt in [
+                ("ñ", "n"), ("á", "a"), ("é", "e"),
+                ("í", "i"), ("ó", "o"), ("ú", "u"),
+                (".", "_")
+            ]:
+                text = text.replace(src, tgt)
+            text = re.sub(r"[(),]", "", text)
+            for src, tgt in [
+                ("$", "dollar"), ("%", "porcentaje"),
+                ("#", "number"), ("/", "_"), ("-", "_"),
+            ]:
+                text = text.replace(src, tgt)
+            text = text.replace(" ", "_")
+            text = re.sub(r"_+", "_", text)
+            return text.strip("_")
+
+        pdf["name_clean"]   = pdf["name"].apply(normalize)
+        pdf["varlab_clean"] = pdf["varlab"].apply(normalize)
+
+        dup = pdf["varlab_clean"].duplicated(keep=False)
+        if dup.any():
+            pdf.loc[dup, "varlab_clean"] = pdf.loc[dup].apply(
+                lambda row: f"{row['varlab_clean']}_{normalize(row['name'])}",
+                axis=1
+            )
+
+        pdf[["name_clean", "varlab_clean"]].to_csv(output_csv, index=False, encoding="utf-8")
+        return pl.from_pandas(pdf[["name_clean", "varlab_clean"]])
+    
+    def insert_goverment_spending(self, update: bool = False) -> pl.DataFrame:
+        existing = (
+            self.conn
+                .sql("SHOW TABLES;")
+                .df()
+                .get("name")
+                .tolist()
+        )
+        if "GovermentSpendingTable" not in existing:
+            init_goverment_spending_table(self.data_file)
+
+        df_clean = self.rename_gastos_columns()
+        print("DF limpio shape:", df_clean.shape)
+
+        tbl_info = self.conn \
+                    .sql("PRAGMA table_info('GovermentSpendingTable');") \
+                    .df()
+        tbl_cols  = tbl_info['name'].tolist()
+        tbl_types = dict(zip(tbl_info['name'], tbl_info['type']))
+
+        df_cols  = df_clean.columns.tolist()
+        df_types = df_clean.dtypes.astype(str).to_dict()
+
+        cols_only_in_df    = set(df_cols) - set(tbl_cols)
+        cols_only_in_table = set(tbl_cols) - set(df_cols)
+        common_cols        = set(df_cols) & set(tbl_cols)
+
+        print("Columnas en DF pero NO en tabla:", cols_only_in_df)
+        print("Columnas en tabla pero NO en DF:", cols_only_in_table)
+
+        if cols_only_in_df or cols_only_in_table:
+            raise RuntimeError("Esquema incompatible: revisa las diferencias anteriores.")
+
+        try:
+            count = self.conn \
+                            .sql("SELECT COUNT(*) FROM GovermentSpendingTable;") \
+                            .fetchone()[0]
+            if count == 0:
+                self.conn.register("tmp_spending", df_clean)
+                self.conn.execute("""
+                    INSERT INTO GovermentSpendingTable
+                    SELECT * FROM tmp_spending;
+                """)
+                logging.info("Inserted cleaned goverment spending data.")
+            else:
+                logging.info("GovermentSpendingTable already contains data; skipping load.")
+        except Exception as e:
+            logging.error(f"Error inserting goverment spending data: {e}")
+            raise
+
+        return self.conn.sql("SELECT * FROM GovermentSpendingTable;").pl()
+    
+
+    def process_spending_data(
+    self,
+    period: str = "monthly",
+    metric: str = "expenditures"
+) -> tuple[pl.DataFrame, list[str]]:
+        metric_lc = metric.lower()
+        self.insert_goverment_spending()
+        df = self.conn.sql("SELECT * FROM GovermentSpendingTable;").pl()
+
+        if metric_lc not in df.columns:
+            raise ValueError(f"La métrica '{metric}' no existe. Columnas disponibles: {df.columns}")
+
+        df = df.rename({"year": "time_period"})
+
+        df = df.with_columns([
+            pl.col("time_period").str.extract(r"^(\d+)-", 1).cast(pl.Int32).alias("year_int"),
+            pl.col("time_period").str.extract(r"-(\d+)$", 1).cast(pl.Int32).alias("month_int"),
+        ])
+
+        month_map = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr',
+                    5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug',
+                    9: 'Sep',10: 'Oct',11: 'Nov',12: 'Dec'}
+        months_map_df = pl.DataFrame({
+            "month_int": list(month_map.keys()),
+            "month_name": list(month_map.values()),
+        })
+        df = df.join(months_map_df, on="month_int", how="left")
+
+        df = df.with_columns(
+            (pl.col("year_int") + (pl.col("month_int") > 6).cast(pl.Int32))
+            .alias("fiscal_year")
+        )
+
+        columns = [
+            {"value": col, "label": col.replace("_", " ").capitalize()}
+            for col in df.columns
+            if col not in ("time_period", "year_int", "month_int")
+        ]
+
+        agg_expr = pl.col(metric_lc).sum().alias(metric_lc)
+        p = period.lower()
+
+        match p:
+            case "fiscal":
+                grouped = (
+                    df.with_columns(
+                        pl.col("fiscal_year").cast(pl.String).alias("time_period")
+                    )
+                    .group_by("time_period").agg(agg_expr)
+                )
+            case "yearly":
+                grouped = (
+                    df.with_columns(
+                        pl.col("year_int").cast(pl.String).alias("time_period")
+                    )
+                    .group_by("time_period").agg(agg_expr)
+                )
+            case "quarterly":
+                quarter = (
+                    pl.when(pl.col("month_int").is_in([1,2,3])).then(pl.lit("q1"))
+                    .when(pl.col("month_int").is_in([4,5,6])).then(pl.lit("q2"))
+                    .when(pl.col("month_int").is_in([7,8,9])).then(pl.lit("q3"))
+                    .otherwise(pl.lit("q4"))
+                )
+                grouped = (
+                    df.with_columns(
+                        (pl.col("year_int").cast(pl.String) + "-" + quarter)
+                        .alias("time_period")
+                    )
+                    .group_by("time_period").agg(agg_expr)
+                )
+            case "monthly":
+                results = pl.DataFrame(schema={
+                    "month_name":  pl.Utf8,
+                    metric_lc:      pl.Float64,
+                    "year_int":    pl.Int32,
+                    "time_period": pl.Utf8,
+                })
+                months_df = pl.DataFrame({"month_name": list(month_map.values())})
+                for yr in df.select("year_int").unique().to_series():
+                    df_y = df.filter(pl.col("year_int") == yr)
+                    df_y = (
+                        months_df
+                        .join(df_y, on="month_name", how="left")
+                        .with_columns([
+                            pl.col("year_int").fill_null(yr),
+                            pl.col(metric_lc).fill_null(0.0).cast(pl.Float64)
+                        ])
+                        .group_by(["month_name", "year_int"]).agg(agg_expr)
+                        .with_columns(
+                            (pl.col("year_int").cast(pl.String) + "-" + pl.col("month_name"))
+                            .alias("time_period")
+                        )
+                        .select("month_name", metric_lc, "year_int", "time_period")
+                    )
+                    results = pl.concat([results, df_y])
+                grouped = results
+            case _:
+                raise ValueError("period debe ser 'monthly', 'quarterly', 'yearly' o 'fiscal'")
+
+        return grouped, grouped["time_period"].to_list()
