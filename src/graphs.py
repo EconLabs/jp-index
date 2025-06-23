@@ -49,8 +49,8 @@ class DataGraph(DataIndex):
                     axis=None,
                 ),
                 tooltip=[
-                    alt.Tooltip("federal_action_obligation:Q", title="Periodo"),
-                    alt.Tooltip(f"{category}:N", title=category),
+                    alt.Tooltip("federal_action_obligation:Q", title="federal action obligation"),
+                    alt.Tooltip(f"{category}:N", title=category.replace('_', ' ')),
                 ],
             )
         )
@@ -96,29 +96,32 @@ class DataGraph(DataIndex):
             period = "time_period"
             sort_expr = "x"
 
+        df = df.sort(period)
+        x_values = df.select(period).unique().to_series().to_list()
+
         if type == "monthly":
-            num_points = len(grouped_pd[period].unique())
-            if num_points < 84:
-                chart_width = "container"
-            else:
-                chart_width = max(600, num_points * 15)
+            tick_vals = x_values[::6]
+        elif type == "quarterly":
+            tick_vals = x_values[::3]
         else:
-            chart_width = "container"
+            tick_vals = x_values
+
+        chart_width = "container"
 
         data_chart = (
             alt.Chart(grouped_pd)
             .mark_line()
             .encode(
-                x=alt.X(f"{period}:O", title="", sort=sort_expr),
+                x=alt.X(f"{period}:O", title="", sort=sort_expr, axis=alt.Axis(values=tick_vals)),
                 y=alt.Y(
                     "federal_action_obligation:Q",
                     title="",
                 ),
                 tooltip=[
-                    alt.Tooltip(f"{period}:O", title="Periodo"),
+                    alt.Tooltip(f"{period}:O", title="period"),
                     alt.Tooltip(
                         f"federal_action_obligation:Q",
-                        title="federal_action_obligation",
+                        title="federal action obligation",
                     ),
                 ],
             )
@@ -334,8 +337,14 @@ class DataGraph(DataIndex):
         columns = [
             {"value": col, "label": col.replace("_", " ").capitalize()}
             for col in df.columns
-            if col not in exclude_columns
+            if col not in exclude_columns and not col.endswith("_lag")
         ]
+        if time_frame == 'fiscal':
+            df = df.filter(pl.col("fiscal") != 2025)
+            df = df.filter(pl.col("fiscal") != 0)
+        else:
+            df = df.filter(pl.col("year") != 2025)
+            df = df.filter(pl.col("year") !=0)
 
         if time_frame == "fiscal":
             frequency = "fiscal"
@@ -382,9 +391,9 @@ class DataGraph(DataIndex):
                 .mark_line()
                 .encode(
                     x=alt.X(
-                        f"{frequency}:N", title="", axis=alt.Axis(values=tick_vals)
+                        f"{frequency}:N", title="", axis=alt.Axis(values=tick_vals), scale=alt.Scale(zero=False)
                     ),
-                    y=alt.Y(f"{column}:Q", title=f""),
+                    y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(zero=False)),
                     tooltip=[
                         alt.Tooltip(f"{frequency}:N", title="Periodo"),
                         alt.Tooltip(

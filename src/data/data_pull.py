@@ -1557,6 +1557,7 @@ class DataPull:
     def process_awards_by_secter(self, type, agency):
         df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
         agency_list = df.select("awarding_agency_name").unique().sort("awarding_agency_name").to_series().to_list()
+        agency_list = ["Total"] + agency_list
         month_map = {
             1: "Jan",
             2: "Feb",
@@ -1609,7 +1610,12 @@ class DataPull:
         type = type.lower()
 
         agg_expr = "federal_action_obligation"
-        df = df.filter(pl.col("awarding_agency_name") == agency)
+        if agency == 'total':
+            df = df
+            group_expr = ['time_period']
+        else:
+            df = df.filter(pl.col("awarding_agency_name") == agency)
+            group_expr = ['time_period', 'awarding_agency_name']
 
         match type:
             case "fiscal":
@@ -1617,14 +1623,14 @@ class DataPull:
                     (pl.col("pr_fiscal_year")).cast(pl.String).alias("time_period")
                 )
                 grouped_df = grouped_df.group_by(
-                    ["time_period", "awarding_agency_name"]
+                    group_expr
                 ).agg(pl.col(agg_expr).sum())
             case "yearly":
                 grouped_df = df.with_columns(
                     (pl.col("year")).cast(pl.String).alias("time_period")
                 )
                 grouped_df = grouped_df.group_by(
-                    ["time_period", "awarding_agency_name"]
+                    group_expr
                 ).agg(pl.col(agg_expr).sum())
             case "quarterly":
                 quarter_expr = (
@@ -1642,7 +1648,7 @@ class DataPull:
                     (pl.col("year").cast(pl.String) + quarter_expr).alias("time_period")
                 )
                 grouped_df = grouped_df.group_by(
-                    ["time_period", "awarding_agency_name"]
+                    group_expr
                 ).agg(pl.col(agg_expr).sum())
             case "monthly":
                 results = pl.DataFrame(
@@ -1683,7 +1689,7 @@ class DataPull:
                     results = pl.concat([results, df_year])
                 grouped_df = results
                 grouped_df = grouped_df.group_by(
-                    ["awarding_agency_name", "time_period"]
+                    group_expr
                 ).agg(pl.col(agg_expr).sum())
                 grouped_df = grouped_df.with_columns(
                     pl.col("time_period")
@@ -1718,6 +1724,12 @@ class DataPull:
                 ).alias("year"),
                 pl.col(category).str.to_lowercase(),
             ]
+        )
+        df = df.with_columns(
+            pl.concat_str([
+                pl.col(category).str.slice(0, 1).str.to_uppercase(),
+                pl.col(category).str.slice(1).str.to_lowercase()
+            ]).alias(category)
         )
         df = df.with_columns(
             [
