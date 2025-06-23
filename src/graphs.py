@@ -455,7 +455,7 @@ class DataGraph(DataIndex):
 
     def create_spending_chart(self, period: str, metric: str):
 
-        df_grouped, _ = self.process_spending_data(period, metric)
+        df_grouped, columns = self.process_spending_data(period, metric)
 
         month_map = {
             "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4,
@@ -562,4 +562,4 @@ class DataGraph(DataIndex):
             .interactive(bind_y=False)
         )
 
-        return chart, x_order
+        return chart, columns
