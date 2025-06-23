@@ -336,6 +336,10 @@ class DataGraph(DataIndex):
             for col in df.columns
             if col not in exclude_columns and not col.endswith("_lag")
         ]
+        if time_frame == 'fiscal':
+            df = df.filter(pl.col("fiscal") != 2025)
+        else:
+            df = df.filter(pl.col("year") != 2025)
 
         if time_frame == "fiscal":
             frequency = "fiscal"
