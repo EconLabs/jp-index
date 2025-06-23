@@ -1556,8 +1556,7 @@ class DataPull:
 
     def process_awards_by_secter(self, type, agency):
         df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
-        agency_list = df.select("awarding_agency_name").unique().to_series().to_list()
-
+        agency_list = df.select("awarding_agency_name").unique().sort("awarding_agency_name").to_series().to_list()
         month_map = {
             1: "Jan",
             2: "Feb",
@@ -1704,6 +1703,7 @@ class DataPull:
             for col in df.columns
             if col not in excluded_columns and "date" not in col.lower()
         ]
+        columns = sorted(columns, key=lambda x: x["label"])
 
         df = df.with_columns(
             [
