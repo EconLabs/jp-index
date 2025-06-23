@@ -328,6 +328,9 @@ class DataGraph(DataIndex):
     ) -> alt.Chart:
         df = self.process_consumer_data(time_frame, data_type)
         df = df.fill_null(0).fill_nan(0)
+        
+        df = df.filter(pl.col("year") !=0)
+        df = df.filter(pl.col("fiscal") != 0)
 
         exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
 
@@ -386,9 +389,9 @@ class DataGraph(DataIndex):
                 .mark_line()
                 .encode(
                     x=alt.X(
-                        f"{frequency}:N", title="", axis=alt.Axis(values=tick_vals)
+                        f"{frequency}:N", title="", axis=alt.Axis(values=tick_vals), scale=alt.Scale(zero=False)
                     ),
-                    y=alt.Y(f"{column}:Q", title=f""),
+                    y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(zero=False)),
                     tooltip=[
                         alt.Tooltip(f"{frequency}:N", title="Periodo"),
                         alt.Tooltip(
