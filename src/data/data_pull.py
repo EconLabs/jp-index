@@ -1890,7 +1890,7 @@ class DataPull:
                     "period debe ser monthly | quarterly | yearly | fiscal"
                 )
 
-        return grouped_df, columns
+        return grouped_df, sorted(columns, key=lambda x: x["label"])
 
     def rename_gastos_columns(self, save_csv: bool = True):
         cleaned_label_path =  f"{self.saving_dir}processed/cleaned_label.csv"
