@@ -1720,6 +1720,12 @@ class DataPull:
             ]
         )
         df = df.with_columns(
+            pl.concat_str([
+                pl.col(category).str.slice(0, 1).str.to_uppercase(),
+                pl.col(category).str.slice(1).str.to_lowercase()
+            ]).alias(category)
+        )
+        df = df.with_columns(
             [
                 (pl.col("year") + (pl.col("month") > 6).cast(pl.Int32)).alias(
                     "pr_fiscal_year"

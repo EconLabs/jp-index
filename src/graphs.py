@@ -49,8 +49,8 @@ class DataGraph(DataIndex):
                     axis=None,
                 ),
                 tooltip=[
-                    alt.Tooltip("federal_action_obligation:Q", title="Periodo"),
-                    alt.Tooltip(f"{category}:N", title=category),
+                    alt.Tooltip("federal_action_obligation:Q", title="federal action obligation"),
+                    alt.Tooltip(f"{category}:N", title=category.replace('_', ' ')),
                 ],
             )
         )
@@ -115,10 +115,10 @@ class DataGraph(DataIndex):
                     title="",
                 ),
                 tooltip=[
-                    alt.Tooltip(f"{period}:O", title="Periodo"),
+                    alt.Tooltip(f"{period}:O", title="period"),
                     alt.Tooltip(
                         f"federal_action_obligation:Q",
-                        title="federal_action_obligation",
+                        title="federal action obligation",
                     ),
                 ],
             )
