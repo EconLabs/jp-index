@@ -334,7 +334,7 @@ class DataGraph(DataIndex):
         columns = [
             {"value": col, "label": col.replace("_", " ").capitalize()}
             for col in df.columns
-            if col not in exclude_columns
+            if col not in exclude_columns and not col.endswith("_lag")
         ]
 
         if time_frame == "fiscal":
