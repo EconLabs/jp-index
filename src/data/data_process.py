@@ -144,7 +144,16 @@ class DataIndex(DataPull):
         variables = df.columns
         remove = ["date", "month", "year", "quarter", "fiscal"]
         variables = [var for var in variables if var not in remove]
-        aggregation_exprs = [pl.col(var).sum().alias(var) for var in variables]
+
+        average_data = [
+            "indice_de_actividad_economica",
+            "encuesta_de_grupo_trabajador_ajustada_estacionalmente",
+            "encuesta_de_grupo_trabajador",
+            "encuesta_de_establecimientos_ajustados_estacionalmente",
+            "encuesta_de_establecimientos"
+        ]
+
+        aggregation_exprs = [(pl.col(var).mean().alias(var) if var in average_data else pl.col(var).sum().alias(var)) for var in variables]
 
         match time_frame:
             case "monthly":

@@ -239,12 +239,28 @@ class DataGraph(DataIndex):
         df = self.jp_indicator_data(time_frame)
         df = df.fill_null(0).fill_nan(0)
 
+        mapping_dict = {
+            "indice_de_actividad_economica": "Indice de Actividad Economica del Banco de Desarrollo Economico",
+            "encuesta_de_grupo_trabajador_ajustada_estacionalmente": "Grupo Trabajador (Miles de Personas) AJUSTADO ESTACIONALMENTE",
+            "encuesta_de_grupo_trabajador": "Poblacion Civil No-Institucional (Miles de Personas)",
+            "encuesta_de_establecimientos_ajustados_estacionalmente": "Empleo No Agricola: Todas las Industrias (Miles de Personas) AJUSTADOS ESTACIONALMENTE",
+            "encuesta_de_establecimientos": "Empleo No Agricola: Todas las Industrias (Miles de Personas)",
+            "indicadores_de_turismo": "Total de Registros en Hoteles y Paradores",
+            "indicadores_de_construccion": "Numero de Unidades de Vivienda Vendidas en Puerto Rico",
+            "indicadores_de_ingresos_netos": "Ingreso Neto al Fondo General - Miles de Dolares",
+            "indicadores_de_energia_electrica": "Generacion de Energia Electrica (Millones de Kilovatios / Hora)"
+        }
+
         exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
         columns = [
-            {"value": col, "label": col.replace("_", " ").capitalize()}
+            {
+                "value": col,
+                "label": mapping_dict.get(col, col.replace("_", " ").capitalize())
+            }
             for col in df.columns
             if col not in exclude_columns
         ]
+        columns = sorted(columns, key=lambda x: x["label"])
 
         if time_frame == "fiscal":
             df = df.filter(pl.col("fiscal") < 2024)
