@@ -331,9 +331,6 @@ class DataGraph(DataIndex):
     ) -> alt.Chart:
         df = self.process_consumer_data(time_frame, data_type)
         df = df.fill_null(0).fill_nan(0)
-        
-        df = df.filter(pl.col("year") !=0)
-        df = df.filter(pl.col("fiscal") != 0)
 
         exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
 
@@ -344,8 +341,10 @@ class DataGraph(DataIndex):
         ]
         if time_frame == 'fiscal':
             df = df.filter(pl.col("fiscal") != 2025)
+            df = df.filter(pl.col("fiscal") != 0)
         else:
             df = df.filter(pl.col("year") != 2025)
+            df = df.filter(pl.col("year") !=0)
 
         if time_frame == "fiscal":
             frequency = "fiscal"
