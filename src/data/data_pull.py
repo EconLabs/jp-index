@@ -2107,4 +2107,4 @@ class DataPull:
             case _:
                 raise ValueError("period debe ser 'monthly', 'quarterly', 'yearly' o 'fiscal'")
 
-        return grouped, grouped["time_period"].to_list()
+        return grouped, sorted(columns, key=lambda x: x["label"])
