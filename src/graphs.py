@@ -441,6 +441,7 @@ class DataGraph(DataIndex):
             for col in selected_colums
             if 'cycle' not in col and 'trend' not in col
         ]
+        columns_dict = sorted(columns_dict, key=lambda x: x["label"])
 
         df = df[["date", column, f"{column}_cycle", f"{column}_trend"]].rename({
             column: "Original",
