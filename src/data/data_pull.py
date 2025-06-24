@@ -1882,6 +1882,7 @@ class DataPull:
                     ).select("month_name", metric, "year", "time_period")
 
                     results = pl.concat([results, df_year])
+                    
 
                 grouped_df = results
 
@@ -1889,6 +1890,8 @@ class DataPull:
                 raise ValueError(
                     "period debe ser monthly | quarterly | yearly | fiscal"
                 )
+        os.makedirs("data/processed", exist_ok=True)
+        grouped_df.write_csv("data/processed/energy.csv")
 
         return grouped_df, sorted(columns, key=lambda x: x["label"])
 
@@ -2106,5 +2109,6 @@ class DataPull:
                 grouped = results
             case _:
                 raise ValueError("period debe ser 'monthly', 'quarterly', 'yearly' o 'fiscal'")
-
+        os.makedirs("data/processed", exist_ok=True)
+        grouped.write_csv("data/processed/gastos_estatales.csv")
         return grouped, sorted(columns, key=lambda x: x["label"])
