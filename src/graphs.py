@@ -612,10 +612,10 @@ class DataGraph(DataIndex):
             tick_vals = x_values
         
         if column == 'total':
-            df = df.drop("population")
+            df = df.drop("populacion")
             df = df.melt(
                 id_vars="time_period",
-                value_vars=["births", "deaths", "migration"]
+                value_vars=["nacimientos", "muertes", "migraciones"]
             )
             
             chart = (

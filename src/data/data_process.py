@@ -221,7 +221,8 @@ class DataIndex(DataPull):
         df = df.rename({
             "births": "nacimientos",
             "deaths": "muertes",
-            "migration": "migraciones"
+            "migration": "migraciones",
+            "population": "populacion"
         })
         df = df.with_columns(
             (pl.col("nacimientos") - pl.col("muertes")).alias("cambio_natural")
