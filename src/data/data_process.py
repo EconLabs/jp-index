@@ -188,4 +188,46 @@ class DataIndex(DataPull):
             data[f"{col}_cycle"] = cycle
             data[f"{col}_trend"] = trend
         return data
+    
+    def jp_demographic_data(self, time_frame: str):
+        if time_frame == 'yearly':
+            df = pl.read_csv(f"{self.saving_dir}raw/yearly_h.csv")
+            df = df.with_columns((pl.col('year')).alias('time_period'))
+        elif time_frame == 'fiscal':
+            df = pl.read_csv(f"{self.saving_dir}raw/fyearly_h.csv")
+            df = df.with_columns((pl.col('fiscal_year')).alias('time_period'))
+        elif time_frame == 'monthly':
+            df = pl.read_csv(f"{self.saving_dir}raw/monthly_h.csv")
+            df = df.with_columns(
+                (
+                    pl.col("year").cast(pl.String)
+                    + "-"
+                    + pl.col("month").cast(pl.String)
+                ).alias('time_period')
+            )
+        elif time_frame == 'quarterly':
+            df = pl.read_csv(f"{self.saving_dir}raw/quarterly_h.csv")
+            df = df.with_columns(
+                (
+                    pl.col("year").cast(pl.String)
+                    + "-q"
+                    + pl.col("quarter").cast(pl.String)
+                ).alias('time_period')
+            )
+        else:
+            raise ValueError("Invalid time frame.")
+        
+        df = df.rename({col: col.replace(" ", "") for col in df.columns})
+        df = df.rename({
+            "births": "nacimientos",
+            "deaths": "muertes",
+            "migration": "migraciones",
+            "population": "populacion"
+        })
+        df = df.with_columns(
+            (pl.col("nacimientos") - pl.col("muertes")).alias("cambio_natural")
+        )
+        df = df.sort('time_period')
+
+        return df
 
