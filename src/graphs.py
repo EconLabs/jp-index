@@ -595,6 +595,8 @@ class DataGraph(DataIndex):
         excluded_columns = ['time_period', 'year', 'fiscal_year', 'month', 'quarter']
 
         columns = [
+            {"value": "componentes", "label": "Componentes"}
+        ] + [
             {"value": col, "label": col.replace("_", " ").capitalize()}
             for col in df.columns
             if col not in excluded_columns
@@ -611,7 +613,7 @@ class DataGraph(DataIndex):
         else:
             tick_vals = x_values
         
-        if column == 'total':
+        if column == 'componentes':
             df = df.drop("populacion")
             df = df.melt(
                 id_vars="time_period",
