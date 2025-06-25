@@ -1704,10 +1704,18 @@ class DataPull:
         df = self.conn.sql(f"SELECT * FROM AwardTable;").pl()
 
         excluded_columns = ["federal_action_obligation", "fiscal_year", "action_date"]
+        include_columns = [
+            'awarding_agency_name', 
+            'awarding_sub_agency_name', 
+            'recipient_name', 
+            'funding_agency_name',
+            'funding_sub_agency_name',
+            'cfda_title'
+        ]
         columns = [
             {"value": col, "label": col.replace("_", " ").capitalize()}
             for col in df.columns
-            if col not in excluded_columns and "date" not in col.lower()
+            if col not in excluded_columns and "date" not in col.lower() and col in include_columns
         ]
         columns = sorted(columns, key=lambda x: x["label"])
 
@@ -1765,7 +1773,12 @@ class DataPull:
                     (pl.col("month").is_in(quarter_to_calendar_month[quarter]))
                     & (pl.col("year") == year)
                 )
-        grouped_df = df_filtered.group_by([category]).agg(pl.col(agg_expr).sum())
+        grouped_df = (
+            df_filtered
+            .filter(pl.col(category).is_not_null())
+            .group_by(category)
+            .agg(pl.col(agg_expr).sum())
+        )
 
         return grouped_df, columns
 
