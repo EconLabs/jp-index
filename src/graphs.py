@@ -248,7 +248,11 @@ class DataGraph(DataIndex):
             "indicadores_de_turismo": "Total de Registros en Hoteles y Paradores",
             "indicadores_de_construccion": "Numero de Unidades de Vivienda Vendidas en Puerto Rico",
             "indicadores_de_ingresos_netos": "Ingreso Neto al Fondo General - Miles de Dolares",
-            "indicadores_de_energia_electrica": "Generacion de Energia Electrica (Millones de Kilovatios / Hora)"
+            "indicadores_de_energia_electrica": "Generacion de Energia Electrica (Millones de Kilovatios / Hora)",
+            "indicadores_de_quiebras": "Numero Total de Quiebras en Puerto Rico",
+            "indicadores_de_comercio_exterior": "Total de Exportaciones - Miles de Dolares",
+            "indicadores_de_ventas_al_detalle_a_precios_corrientes": "Total de Ventas al Detalle - A precios corrientes",
+            "indicadores_de_transportacion": "Movimiento de pasajeros en el aeropuerto Luis Muñoz Marin (SJU)"
         }
 
         exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
@@ -436,8 +440,25 @@ class DataGraph(DataIndex):
         ]
         
         df = df.select(["date"] + selected_colums)
+
+        mapping_dict = {
+            "indice_de_actividad_economica": "Indice de Actividad Economica del Banco de Desarrollo Economico",
+            "encuesta_de_grupo_trabajador_ajustada_estacionalmente": "Grupo Trabajador (Miles de Personas) AJUSTADO ESTACIONALMENTE",
+            "encuesta_de_grupo_trabajador": "Poblacion Civil No-Institucional (Miles de Personas)",
+            "encuesta_de_establecimientos_ajustados_estacionalmente": "Empleo No Agricola: Todas las Industrias (Miles de Personas) AJUSTADOS ESTACIONALMENTE",
+            "encuesta_de_establecimientos": "Empleo No Agricola: Todas las Industrias (Miles de Personas)",
+            "indicadores_de_turismo": "Total de Registros en Hoteles y Paradores",
+            "indicadores_de_construccion": "Numero de Unidades de Vivienda Vendidas en Puerto Rico",
+            "indicadores_de_ingresos_netos": "Ingreso Neto al Fondo General - Miles de Dolares",
+            "indicadores_de_energia_electrica": "Generacion de Energia Electrica (Millones de Kilovatios / Hora)",
+            "indicadores_de_quiebras": "Numero Total de Quiebras en Puerto Rico",
+            "indicadores_de_comercio_exterior": "Total de Exportaciones - Miles de Dolares",
+            "indicadores_de_ventas_al_detalle_a_precios_corrientes": "Total de Ventas al Detalle - A precios corrientes",
+            "indicadores_de_transportacion": "Movimiento de pasajeros en el aeropuerto Luis Muñoz Marin (SJU)"
+        }
+
         columns_dict = [
-            {"value": col, "label": col.replace("_", " ").capitalize()}
+            {"value": col, "label": mapping_dict.get(col, col.replace("_", " ").capitalize())}
             for col in selected_colums
             if 'cycle' not in col and 'trend' not in col
         ]
