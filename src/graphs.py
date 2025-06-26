@@ -679,3 +679,95 @@ class DataGraph(DataIndex):
                 .configure_axis(gridColor="white", grid=True)
             )
         return chart, columns
+    
+    def create_proyecciones_graph(self, time_frame: str, column: str):
+        df = self.jp_proyecciones_data(time_frame)
+
+        if time_frame == 'yearly':
+            time_period = 'year'
+        elif time_frame == 'fiscal':
+            time_period = 'fyear'
+        elif time_frame == 'monthly':
+            time_period = 'date'
+        elif time_frame == 'quarterly':
+            time_period = 'date'
+        else:
+            raise ValueError("Invalid time frame.")
+
+        df = df.with_columns((pl.col(time_period)).alias('time_period'))
+        df = df.sort('time_period')
+
+        excluded_columns = ['fyear', 'year', 'date', 'time_period', 'pop_change', 'pop_equation', 'pop_diff', 'diff_percentage']
+
+        columns = [
+            {"value": "componentes", "label": "Componentes"}
+        ] + [
+            {"value": col, "label": col.replace("_", " ").capitalize()}
+            for col in df.columns
+            if col not in excluded_columns
+        ]
+        
+        chart_width = "container"
+
+        x_values = df.select('time_period').unique().to_series().to_list()
+
+        if time_frame == "monthly":
+            tick_vals = x_values[::6]
+        elif time_frame == "quarterly":
+            tick_vals = x_values[::3]
+        else:
+            tick_vals = x_values
+        
+        if column == 'componentes':
+            df = df.drop("populacion")
+            df = df.melt(
+                id_vars="time_period",
+                value_vars=["nacimientos", "muertes", "migraciones"]
+            )
+            
+            chart = (
+                (
+                    alt.Chart(df)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("time_period:N", title="", axis=alt.Axis(values=tick_vals)),
+                        y=alt.Y("value:Q", title=""),
+                        color=alt.Color("variable:N", title=""),
+                        tooltip=[
+                            alt.Tooltip("time_period:N", title="Periodo"),
+                            alt.Tooltip("variable:N", title="Serie"),
+                            alt.Tooltip("value:Q", title="Valor")
+                        ]
+                    )
+                    .properties(
+                        width=chart_width, padding={"top": 10, "bottom": 10, "left": 30}
+                    )
+                )
+                .configure_view(fill="#e6f7ff")
+                .configure_axis(gridColor="white", grid=True)
+            )
+        else:
+            chart = (
+                (
+                    alt.Chart(df)
+                    .mark_line()
+                    .encode(
+                        x=alt.X(
+                            f"time_period:N", title="", scale=alt.Scale(zero=False), axis=alt.Axis(values=tick_vals)
+                        ),
+                        y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(zero=False)),
+                        tooltip=[
+                            alt.Tooltip(f"time_period:N", title="Periodo"),
+                            alt.Tooltip(
+                                f"{column}:Q",
+                            ),
+                        ],
+                    )
+                    .properties(
+                        width=chart_width, padding={"top": 10, "bottom": 10, "left": 30}
+                    )
+                )
+                .configure_view(fill="#e6f7ff")
+                .configure_axis(gridColor="white", grid=True)
+            )
+        return chart, columns
