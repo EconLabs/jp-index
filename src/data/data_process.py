@@ -1,5 +1,6 @@
 import polars as pl
 import pandas as pd
+from pandas.api.types import is_period_dtype
 import statsmodels.api as sm
 
 from .data_pull import DataPull
@@ -229,5 +230,34 @@ class DataIndex(DataPull):
         )
         df = df.sort('time_period')
 
+        return df
+    
+    def jp_proyecciones_data(self, time_frame: str):
+        if time_frame == 'yearly':
+            df_pd = pd.read_parquet(f"{self.saving_dir}raw/yearly_idb.parquet")
+        elif time_frame == 'fiscal':
+            df_pd = pd.read_parquet(f"{self.saving_dir}raw/fiscal_year_idb.parquet")
+        elif time_frame == 'monthly':
+            df_pd = pd.read_parquet(f"{self.saving_dir}raw/monthly_idb.parquet")
+        elif time_frame == 'quarterly':
+            df_pd = pd.read_parquet(f"{self.saving_dir}raw/quarterly_idb.parquet")
+        else:
+            raise ValueError("Invalid time frame.")
+        for col in df_pd.columns:
+            if is_period_dtype(df_pd[col]):
+                df_pd[col] = df_pd[col].astype(str)
+
+        df = pl.from_pandas(df_pd)
+
+        df = df.rename({col: col.replace(" ", "") for col in df.columns})
+        df = df.rename({
+            "births": "nacimientos",
+            "deaths": "muertes",
+            "net_migration": "migraciones",
+            "population": "populacion"
+        })
+        df = df.with_columns(
+            (pl.col("nacimientos") - pl.col("muertes")).alias("cambio_natural")
+        )
         return df
 
