@@ -62,7 +62,7 @@ class DataIndex(DataPull):
         variables = df.columns
         remove = ["date", "month", "year", "quarter", "fiscal"]
         variables = [var for var in variables if var not in remove]
-        aggregation_exprs = [pl.col(var).sum().alias(var) for var in variables]
+        aggregation_exprs = [pl.col(var).mean().alias(var) for var in variables]
 
         match time_frame:
             case "monthly":
