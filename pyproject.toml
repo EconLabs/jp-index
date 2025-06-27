@@ -1,7 +1,7 @@
 [project]
 name = "jp-index"
 authors = [{ name = "Alejandro Ouslan", email = "alejandro.ouslan@upr.edu" }]
-version = "0.9.6"
+version = "0.10.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
