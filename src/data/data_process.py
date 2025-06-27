@@ -75,46 +75,58 @@ class DataIndex(DataPull):
                 return df.group_by("fiscal").agg(aggregation_exprs)
             case _:
                 raise ValueError("Invalid aggregation")
-            
-    def apply_data_type(self, df: pl.DataFrame, data_type: str):
-        value_columns = [col for col in df.columns if col not in {"year", "month", "fiscal", "date", "quarter"}]
 
-        lag_df = df.select(["year", "month"] + value_columns).with_columns([
-            (pl.col("year") + 1).alias("year")
-        ]).rename({col: f"{col}_lag" for col in value_columns})
+    def apply_data_type(self, df: pl.DataFrame, data_type: str):
+        value_columns = [
+            col
+            for col in df.columns
+            if col not in {"year", "month", "fiscal", "date", "quarter"}
+        ]
+
+        lag_df = (
+            df.select(["year", "month"] + value_columns)
+            .with_columns([(pl.col("year") + 1).alias("year")])
+            .rename({col: f"{col}_lag" for col in value_columns})
+        )
 
         df = df.join(lag_df, on=["year", "month"], how="left")
 
         for col in value_columns:
-            if (data_type == "cambio_porcentual"):
-                transformation = (((pl.col(col) - pl.col(f"{col}_lag")).cast(pl.Float64))/((pl.col(f"{col}_lag").cast(pl.Float64)))*100).alias(col)
+            if data_type == "cambio_porcentual":
+                transformation = (
+                    ((pl.col(col) - pl.col(f"{col}_lag")).cast(pl.Float64))
+                    / (pl.col(f"{col}_lag").cast(pl.Float64))
+                    * 100
+                ).alias(col)
             else:
                 transformation = (pl.col(col) - pl.col(f"{col}_lag")).alias(col)
-                
-            df = df.with_columns(
-                transformation
-            )
+
+            df = df.with_columns(transformation)
         df = df.select(df.columns)
 
-        df = df.with_columns([
-            pl.col(col).dt.total_microseconds().alias(col) if df.schema[col] == pl.Duration("us") else pl.col(col)
-            for col in df.columns
-        ])
+        df = df.with_columns(
+            [
+                pl.col(col).dt.total_microseconds().alias(col)
+                if df.schema[col] == pl.Duration("us")
+                else pl.col(col)
+                for col in df.columns
+            ]
+        )
         return df
-            
+
     def process_consumer_data(self, time_frame: str, data_type: str) -> pl.DataFrame:
-        if data_type == 'cambio_porcentual':
-            df = self.consumer_data('monthly')
+        if data_type == "cambio_porcentual":
+            df = self.consumer_data("monthly")
             df = self.apply_data_type(df, data_type)
             df = df.filter(pl.col("year") != 1984)
-        elif data_type == 'primera_diferencia':
-            df = self.consumer_data('monthly')
+        elif data_type == "primera_diferencia":
+            df = self.consumer_data("monthly")
             df = self.apply_data_type(df, data_type)
             df = df.filter(pl.col("year") != 1984)
-        elif data_type == 'indices_precio':
+        elif data_type == "indices_precio":
             df = self.consumer_data(time_frame)
             df = df
-  
+
         return df
 
     def jp_indicator_data(self, time_frame: str) -> pl.DataFrame:
@@ -151,10 +163,17 @@ class DataIndex(DataPull):
             "encuesta_de_grupo_trabajador_ajustada_estacionalmente",
             "encuesta_de_grupo_trabajador",
             "encuesta_de_establecimientos_ajustados_estacionalmente",
-            "encuesta_de_establecimientos"
+            "encuesta_de_establecimientos",
         ]
 
-        aggregation_exprs = [(pl.col(var).mean().alias(var) if var in average_data else pl.col(var).sum().alias(var)) for var in variables]
+        aggregation_exprs = [
+            (
+                pl.col(var).mean().alias(var)
+                if var in average_data
+                else pl.col(var).sum().alias(var)
+            )
+            for var in variables
+        ]
 
         match time_frame:
             case "monthly":
@@ -189,57 +208,59 @@ class DataIndex(DataPull):
             data[f"{col}_cycle"] = cycle
             data[f"{col}_trend"] = trend
         return data
-    
+
     def jp_demographic_data(self, time_frame: str):
-        if time_frame == 'yearly':
+        if time_frame == "yearly":
             df = pl.read_csv(f"{self.saving_dir}raw/yearly_h.csv")
-            df = df.with_columns((pl.col('year')).alias('time_period'))
-        elif time_frame == 'fiscal':
+            df = df.with_columns((pl.col("year")).alias("time_period"))
+        elif time_frame == "fiscal":
             df = pl.read_csv(f"{self.saving_dir}raw/fyearly_h.csv")
-            df = df.with_columns((pl.col('fiscal_year')).alias('time_period'))
-        elif time_frame == 'monthly':
+            df = df.with_columns((pl.col("fiscal_year")).alias("time_period"))
+        elif time_frame == "monthly":
             df = pl.read_csv(f"{self.saving_dir}raw/monthly_h.csv")
             df = df.with_columns(
                 (
                     pl.col("year").cast(pl.String)
                     + "-"
                     + pl.col("month").cast(pl.String)
-                ).alias('time_period')
+                ).alias("time_period")
             )
-        elif time_frame == 'quarterly':
+        elif time_frame == "quarterly":
             df = pl.read_csv(f"{self.saving_dir}raw/quarterly_h.csv")
             df = df.with_columns(
                 (
                     pl.col("year").cast(pl.String)
                     + "-q"
                     + pl.col("quarter").cast(pl.String)
-                ).alias('time_period')
+                ).alias("time_period")
             )
         else:
             raise ValueError("Invalid time frame.")
-        
+
         df = df.rename({col: col.replace(" ", "") for col in df.columns})
-        df = df.rename({
-            "births": "nacimientos",
-            "deaths": "muertes",
-            "migration": "migraciones",
-            "population": "populacion"
-        })
+        df = df.rename(
+            {
+                "births": "nacimientos",
+                "deaths": "muertes",
+                "migration": "migraciones",
+                "population": "populacion",
+            }
+        )
         df = df.with_columns(
             (pl.col("nacimientos") - pl.col("muertes")).alias("cambio_natural")
         )
-        df = df.sort('time_period')
+        df = df.sort("time_period")
 
         return df
-    
+
     def jp_proyecciones_data(self, time_frame: str):
-        if time_frame == 'yearly':
+        if time_frame == "yearly":
             df_pd = pd.read_parquet(f"{self.saving_dir}raw/yearly_idb.parquet")
-        elif time_frame == 'fiscal':
+        elif time_frame == "fiscal":
             df_pd = pd.read_parquet(f"{self.saving_dir}raw/fiscal_year_idb.parquet")
-        elif time_frame == 'monthly':
+        elif time_frame == "monthly":
             df_pd = pd.read_parquet(f"{self.saving_dir}raw/monthly_idb.parquet")
-        elif time_frame == 'quarterly':
+        elif time_frame == "quarterly":
             df_pd = pd.read_parquet(f"{self.saving_dir}raw/quarterly_idb.parquet")
         else:
             raise ValueError("Invalid time frame.")
@@ -250,14 +271,15 @@ class DataIndex(DataPull):
         df = pl.from_pandas(df_pd)
 
         df = df.rename({col: col.replace(" ", "") for col in df.columns})
-        df = df.rename({
-            "births": "nacimientos",
-            "deaths": "muertes",
-            "net_migration": "migraciones",
-            "population": "populacion"
-        })
+        df = df.rename(
+            {
+                "births": "nacimientos",
+                "deaths": "muertes",
+                "net_migration": "migraciones",
+                "population": "populacion",
+            }
+        )
         df = df.with_columns(
             (pl.col("nacimientos") - pl.col("muertes")).alias("cambio_natural")
         )
         return df
-
