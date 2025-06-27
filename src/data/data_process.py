@@ -129,7 +129,7 @@ class DataIndex(DataPull):
 
         return df
 
-    def jp_indicator_data(self, time_frame: str) -> pl.DataFrame:
+    def jp_indicator_data(self, time_frame: str, data_type: str) -> pl.DataFrame:
         """
         Aggregate consumer data based on the specified time frame.
 
@@ -175,17 +175,26 @@ class DataIndex(DataPull):
             for var in variables
         ]
 
+        if data_type == "cambio_porcentual":
+            df = self.apply_data_type(df, data_type)
+        elif data_type == "primera_diferencia":
+            df = self.apply_data_type(df, data_type)
+        elif data_type == "indices_precio":
+            df = df
+
         match time_frame:
             case "monthly":
-                return df
+                df = df
             case "quarterly":
-                return df.group_by(["year", "quarter"]).agg(aggregation_exprs)
+                df = df.group_by(["year", "quarter"]).agg(aggregation_exprs)
             case "yearly":
-                return df.group_by("year").agg(aggregation_exprs)
+                df = df.group_by("year").agg(aggregation_exprs)
             case "fiscal":
-                return df.group_by("fiscal").agg(aggregation_exprs)
+                df = df.group_by("fiscal").agg(aggregation_exprs)
             case _:
-                raise ValueError("Invalid aggregation")
+                raise ValueError("Invalid aggregation")    
+
+        return df
 
     def jp_cycle_data(self) -> pd.DataFrame:
         df = self.jp_indicator_data(time_frame="quarterly").filter(

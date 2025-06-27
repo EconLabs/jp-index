@@ -235,8 +235,8 @@ class DataGraph(DataIndex):
         )
         return chart, energy_metrics
 
-    def create_indicators_graph(self, time_frame: str, column: str) -> alt.Chart:
-        df = self.jp_indicator_data(time_frame)
+    def create_indicators_graph(self, time_frame: str, column: str, data_type: str) -> alt.Chart:
+        df = self.jp_indicator_data(time_frame, data_type)
         df = df.fill_null(0).fill_nan(0)
 
         mapping_dict = {
@@ -299,11 +299,6 @@ class DataGraph(DataIndex):
             df = df.sort(frequency)
 
         df = df.filter(pl.col(column) != 0)
-        min_idx = df.select(pl.col(column).arg_min()).item()
-        max_idx = df.select(pl.col(column).arg_max()).item()
-
-        range_min = df[column][min_idx] - df[column][min_idx] * 0.2
-        range_max = df[column][max_idx] + df[column][max_idx] * 0.2
 
         chart_width = "container"
 
@@ -327,7 +322,6 @@ class DataGraph(DataIndex):
                     y=alt.Y(
                         f"{column}:Q",
                         title=f"",
-                        scale=alt.Scale(domain=[range_min, range_max]),
                     ),
                     tooltip=[
                         alt.Tooltip(f"{frequency}:N", title="Periodo"),
