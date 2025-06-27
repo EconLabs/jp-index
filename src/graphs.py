@@ -970,10 +970,17 @@ class DataGraph(DataIndex):
     ) -> alt.Chart:
         df_1950, df_2001 = self.pull_macrodata(time_frame)
         df = df_1950
+        df = df.rename({
+            col: col.replace(" ", "_")
+                    .replace(".", "")
+                    .replace("[", "")
+                    .replace("]", "")
+            for col in df.columns
+        })
 
         df = df.fill_null(0).fill_nan(0)
 
-        exclude_columns = ["qtr", "periodo = año fiscal"]
+        exclude_columns = ["qtr", "periodo_=_año_fiscal"]
 
         columns = [
             {"value": col, "label": col.replace("_", " ").capitalize()}
@@ -982,13 +989,13 @@ class DataGraph(DataIndex):
         ]
 
         if time_frame == "fiscal":
-            frequency = "periodo = año fiscal"
+            frequency = "periodo_=_año_fiscal"
             df = df.sort(frequency)
         elif time_frame == "quarterly":
             frequency = "year_quarter"
             df = df.with_columns(
                 (
-                    pl.col("periodo = año fiscal").cast(pl.String)
+                    pl.col("periodo_=_año_fiscal").cast(pl.String)
                     + "-q"
                     + pl.col("qtr").cast(pl.String)
                 ).alias(frequency)
