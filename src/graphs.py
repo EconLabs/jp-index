@@ -964,3 +964,77 @@ class DataGraph(DataIndex):
         )
 
         return chart, columns
+    
+    def create_macro_graph(
+        self, time_frame: str, column: str
+    ) -> alt.Chart:
+        df_1950, df_2001 = self.pull_macrodata(time_frame)
+        df = df_1950
+        df = df.rename({
+            col: col.replace(" ", "_")
+                    .replace(".", "")
+                    .replace("[", "")
+                    .replace("]", "")
+            for col in df.columns
+        })
+
+        df = df.fill_null(0).fill_nan(0)
+
+        exclude_columns = ["qtr", "periodo_=_año_fiscal"]
+
+        columns = [
+            {"value": col, "label": col.replace("_", " ").capitalize()}
+            for col in df.columns
+            if col not in exclude_columns
+        ]
+
+        if time_frame == "fiscal":
+            frequency = "periodo_=_año_fiscal"
+            df = df.sort(frequency)
+        elif time_frame == "quarterly":
+            frequency = "year_quarter"
+            df = df.with_columns(
+                (
+                    pl.col("periodo_=_año_fiscal").cast(pl.String)
+                    + "-q"
+                    + pl.col("qtr").cast(pl.String)
+                ).alias(frequency)
+            )
+            df = df.sort(frequency)
+        df = df.group_by(frequency).agg(pl.col(column).sum())
+
+        chart_width = "container"
+
+        x_values = df.select(frequency).unique().to_series().to_list()
+
+        if time_frame == "quarterly":
+            tick_vals = x_values[::3]
+        else:
+            tick_vals = x_values
+
+        chart = (
+            (
+                alt.Chart(df)
+                .mark_line()
+                .encode(
+                    x=alt.X(
+                        f"{frequency}:N", title="", axis=alt.Axis(values=tick_vals), scale=alt.Scale(zero=False)
+                    ),
+                    y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(zero=False)),
+                    tooltip=[
+                        alt.Tooltip(f"{frequency}:N", title="Periodo"),
+                        alt.Tooltip(
+                            f"{column}:Q",
+                        ),
+                    ],
+                )
+                .properties(
+                    width=chart_width, padding={"top": 10, "bottom": 10, "left": 30}
+                )
+            )
+            .configure_view(fill="#e6f7ff")
+            .configure_axis(gridColor="white", grid=True)
+        )
+        chart.save('macro.html')
+
+        return chart, columns
