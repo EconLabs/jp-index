@@ -1,6 +1,6 @@
 import altair as alt
 import polars as pl
-
+import re
 from .data.data_process import DataIndex
 
 
@@ -152,7 +152,10 @@ class DataGraph(DataIndex):
 
     def create_energy_chart(self, period: str, metric: str):
         df_grouped, energy_metrics = self.process_energy_data(period, metric)
-
+        df_grouped = df_grouped.filter(
+        ~pl.col("time_period").str.starts_with("2025") &
+        ~pl.col("time_period").str.starts_with("1999")
+        )
         y_title, y_format = self._detect_unidad_y_formato(metric)
 
         unique_periods = df_grouped["time_period"].unique().to_list()
@@ -210,7 +213,7 @@ class DataGraph(DataIndex):
 
         chart = (
             alt.Chart(alt.Data(values=data))
-            .mark_line(point=True)
+            .mark_line(point=False)
             .encode(
                 x=alt.X(
                     "time_period:N",
@@ -500,6 +503,17 @@ class DataGraph(DataIndex):
 
         return chart, columns_dict
 
+    def format_label_estatal(self, col_name: str) -> str:
+        label = col_name.replace("_", " ").title()
+
+        match = re.search(r"_e(\d{4})$", col_name)
+        if match:
+            base = col_name[: -len(match.group(0))].replace("_", " ").title()
+            code = match.group(1)
+            return f"{base} ({code})"
+        return label
+
+    
     def create_spending_chart(self, period: str, metric: str):
         df_grouped, columns = self.process_spending_data(period, metric)
 
@@ -598,6 +612,15 @@ class DataGraph(DataIndex):
             .configure_axis(grid=True, gridColor="white")
             .interactive(bind_y=False)
         )
+        columns = [
+        {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
+        for col in columns if col["value"] != "fiscal_year"
+    ]
+
+        columns = [
+        {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
+        for col in columns
+    ]
 
         return chart, columns
 
@@ -962,7 +985,15 @@ class DataGraph(DataIndex):
             .configure_axis(grid=True, gridColor="white")
             .interactive(bind_y=False)
         )
+        columns = [
+        {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
+        for col in columns if col["value"] != "fiscal_year"
+    ]
 
+        columns = [
+        {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
+        for col in columns
+        ]
         return chart, columns
     
     def create_macro_graph(
