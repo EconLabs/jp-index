@@ -192,14 +192,14 @@ class DataIndex(DataPull):
             case "fiscal":
                 df = df.group_by("fiscal").agg(aggregation_exprs)
             case _:
-                raise ValueError("Invalid aggregation")    
+                raise ValueError("Invalid aggregation")
 
         return df
 
     def jp_cycle_data(self) -> pd.DataFrame:
-        df = self.jp_indicator_data(time_frame="quarterly").filter(
-            pl.col("year") < 2025
-        )
+        df = self.jp_indicator_data(
+            time_frame="quarterly", data_type="indices_precio"
+        ).filter(pl.col("year") < 2025)
         data = (
             df.with_columns(
                 date=pl.col("year").cast(pl.String)
