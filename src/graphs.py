@@ -49,8 +49,10 @@ class DataGraph(DataIndex):
                     axis=None,
                 ),
                 tooltip=[
-                    alt.Tooltip("federal_action_obligation:Q", title="federal action obligation"),
-                    alt.Tooltip(f"{category}:N", title=category.replace('_', ' ')),
+                    alt.Tooltip(
+                        "federal_action_obligation:Q", title="federal action obligation"
+                    ),
+                    alt.Tooltip(f"{category}:N", title=category.replace("_", " ")),
                 ],
             )
         )
@@ -112,7 +114,12 @@ class DataGraph(DataIndex):
             alt.Chart(grouped_pd)
             .mark_line()
             .encode(
-                x=alt.X(f"{period}:O", title="", sort=sort_expr, axis=alt.Axis(values=tick_vals)),
+                x=alt.X(
+                    f"{period}:O",
+                    title="",
+                    sort=sort_expr,
+                    axis=alt.Axis(values=tick_vals),
+                ),
                 y=alt.Y(
                     "federal_action_obligation:Q",
                     title="",
@@ -153,8 +160,8 @@ class DataGraph(DataIndex):
     def create_energy_chart(self, period: str, metric: str):
         df_grouped, energy_metrics = self.process_energy_data(period, metric)
         df_grouped = df_grouped.filter(
-        ~pl.col("time_period").str.starts_with("2025") &
-        ~pl.col("time_period").str.starts_with("1999")
+            ~pl.col("time_period").str.starts_with("2025")
+            & ~pl.col("time_period").str.starts_with("1999")
         )
         y_title, y_format = self._detect_unidad_y_formato(metric)
 
@@ -238,7 +245,9 @@ class DataGraph(DataIndex):
         )
         return chart, energy_metrics
 
-    def create_indicators_graph(self, time_frame: str, column: str, data_type: str) -> alt.Chart:
+    def create_indicators_graph(
+        self, time_frame: str, column: str, data_type: str
+    ) -> alt.Chart:
         df = self.jp_indicator_data(time_frame, data_type)
         df = df.fill_null(0).fill_nan(0)
 
@@ -255,14 +264,14 @@ class DataGraph(DataIndex):
             "indicadores_de_quiebras": "Numero Total de Quiebras en Puerto Rico",
             "indicadores_de_comercio_exterior": "Total de Exportaciones - Miles de Dolares",
             "indicadores_de_ventas_al_detalle_a_precios_corrientes": "Total de Ventas al Detalle - A precios corrientes",
-            "indicadores_de_transportacion": "Movimiento de pasajeros en el aeropuerto Luis Muñoz Marin (SJU)"
+            "indicadores_de_transportacion": "Movimiento de pasajeros en el aeropuerto Luis Muñoz Marin (SJU)",
         }
 
         exclude_columns = ["date", "month", "year", "quarter", "fiscal"]
         columns = [
             {
                 "value": col,
-                "label": mapping_dict.get(col, col.replace("_", " ").capitalize())
+                "label": mapping_dict.get(col, col.replace("_", " ").capitalize()),
             }
             for col in df.columns
             if col not in exclude_columns
@@ -356,12 +365,12 @@ class DataGraph(DataIndex):
             for col in df.columns
             if col not in exclude_columns and not col.endswith("_lag")
         ]
-        if time_frame == 'fiscal':
+        if time_frame == "fiscal":
             df = df.filter(pl.col("fiscal") != 2025)
             df = df.filter(pl.col("fiscal") != 0)
         else:
             df = df.filter(pl.col("year") != 2025)
-            df = df.filter(pl.col("year") !=0)
+            df = df.filter(pl.col("year") != 0)
 
         if time_frame == "fiscal":
             frequency = "fiscal"
@@ -408,7 +417,10 @@ class DataGraph(DataIndex):
                 .mark_line()
                 .encode(
                     x=alt.X(
-                        f"{frequency}:N", title="", axis=alt.Axis(values=tick_vals), scale=alt.Scale(zero=False)
+                        f"{frequency}:N",
+                        title="",
+                        axis=alt.Axis(values=tick_vals),
+                        scale=alt.Scale(zero=False),
                     ),
                     y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(zero=False)),
                     tooltip=[
@@ -427,15 +439,16 @@ class DataGraph(DataIndex):
         )
 
         return chart, columns
-    
+
     def create_jp_cycles_graphs(self, column: str):
         df = pl.from_pandas(self.jp_cycle_data())
 
         selected_colums = [
-            col for col in df.columns
+            col
+            for col in df.columns
             if col != "date" and col != "year" and col != "quarter"
         ]
-        
+
         df = df.select(["date"] + selected_colums)
 
         mapping_dict = {
@@ -451,28 +464,26 @@ class DataGraph(DataIndex):
             "indicadores_de_quiebras": "Numero Total de Quiebras en Puerto Rico",
             "indicadores_de_comercio_exterior": "Total de Exportaciones - Miles de Dolares",
             "indicadores_de_ventas_al_detalle_a_precios_corrientes": "Total de Ventas al Detalle - A precios corrientes",
-            "indicadores_de_transportacion": "Movimiento de pasajeros en el aeropuerto Luis Muñoz Marin (SJU)"
+            "indicadores_de_transportacion": "Movimiento de pasajeros en el aeropuerto Luis Muñoz Marin (SJU)",
         }
 
         columns_dict = [
-            {"value": col, "label": mapping_dict.get(col, col.replace("_", " ").capitalize())}
+            {
+                "value": col,
+                "label": mapping_dict.get(col, col.replace("_", " ").capitalize()),
+            }
             for col in selected_colums
-            if 'cycle' not in col and 'trend' not in col
+            if "cycle" not in col and "trend" not in col
         ]
         columns_dict = sorted(columns_dict, key=lambda x: x["label"])
 
-        df = df[["date", column, f"{column}_cycle", f"{column}_trend"]].rename({
-            column: "Original",
-            f"{column}_cycle": "Cycle",
-            f"{column}_trend": "Trend"
-        })
-        df = df.melt(
-            id_vars="date",
-            value_vars=["Original", "Cycle", "Trend"]
+        df = df[["date", column, f"{column}_cycle", f"{column}_trend"]].rename(
+            {column: "Original", f"{column}_cycle": "Cycle", f"{column}_trend": "Trend"}
         )
+        df = df.melt(id_vars="date", value_vars=["Original", "Cycle", "Trend"])
 
         chart_width = "container"
-        
+
         chart = (
             (
                 alt.Chart(df)
@@ -484,8 +495,8 @@ class DataGraph(DataIndex):
                     tooltip=[
                         alt.Tooltip("date:N", title="Periodo"),
                         alt.Tooltip("variable:N", title="Serie"),
-                        alt.Tooltip("value:Q", title="Valor")
-                    ]
+                        alt.Tooltip("value:Q", title="Valor"),
+                    ],
                 )
                 .properties(
                     width=chart_width, padding={"top": 10, "bottom": 10, "left": 30}
@@ -507,55 +518,63 @@ class DataGraph(DataIndex):
             return f"{base} ({code})"
         return label
 
-    
     def create_spending_chart(self, period: str, metric: str):
         df_grouped, columns = self.process_spending_data(period, metric)
 
         month_map = {
-            "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4,
-            "May": 5, "Jun": 6, "Jul": 7, "Aug": 8,
-            "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
+            "Jan": 1,
+            "Feb": 2,
+            "Mar": 3,
+            "Apr": 4,
+            "May": 5,
+            "Jun": 6,
+            "Jul": 7,
+            "Aug": 8,
+            "Sep": 9,
+            "Oct": 10,
+            "Nov": 11,
+            "Dec": 12,
         }
 
-        months_lookup = pl.DataFrame({
-            "month_name": list(month_map.keys()),
-            "month_int":   list(month_map.values())
-        })
+        months_lookup = pl.DataFrame(
+            {
+                "month_name": list(month_map.keys()),
+                "month_int": list(month_map.values()),
+            }
+        )
 
-        df_aux = df_grouped.with_columns([
-            pl.col("time_period").str.extract(r"^(\d+)", 1).cast(pl.Int32).alias("year_int"),
-
-            pl.when(pl.col("time_period").str.contains(r"-q[1-4]$"))
-            .then(pl.col("time_period").str.extract(r"-q([1-4])$", 1).cast(pl.Int32))
-            .when(pl.col("time_period").str.contains(r"-(\d+)$"))
-            .then(pl.col("time_period").str.extract(r"-(\d+)$", 1).cast(pl.Int32))
-            .otherwise(pl.lit(None))
-            .alias("period_int_raw"),
-
-            pl.when(pl.col("time_period").str.contains(r"-[A-Za-z]+$"))
-            .then(pl.col("time_period").str.extract(r"-(\w+)$", 1))
-            .otherwise(pl.lit(None))
-            .alias("month_name_raw")
-        ])
+        df_aux = df_grouped.with_columns(
+            [
+                pl.col("time_period")
+                .str.extract(r"^(\d+)", 1)
+                .cast(pl.Int32)
+                .alias("year_int"),
+                pl.when(pl.col("time_period").str.contains(r"-q[1-4]$"))
+                .then(
+                    pl.col("time_period").str.extract(r"-q([1-4])$", 1).cast(pl.Int32)
+                )
+                .when(pl.col("time_period").str.contains(r"-(\d+)$"))
+                .then(pl.col("time_period").str.extract(r"-(\d+)$", 1).cast(pl.Int32))
+                .otherwise(pl.lit(None))
+                .alias("period_int_raw"),
+                pl.when(pl.col("time_period").str.contains(r"-[A-Za-z]+$"))
+                .then(pl.col("time_period").str.extract(r"-(\w+)$", 1))
+                .otherwise(pl.lit(None))
+                .alias("month_name_raw"),
+            ]
+        )
 
         df_joined = df_aux.join(
-            months_lookup,
-            left_on="month_name_raw",
-            right_on="month_name",
-            how="left"
+            months_lookup, left_on="month_name_raw", right_on="month_name", how="left"
         )
 
-        df_sorted = (
-            df_joined
-            .with_columns([
-                pl.coalesce([
-                    pl.col("period_int_raw"),
-                    pl.col("month_int"),
-                    pl.lit(1)
-                ]).alias("period_int")
-            ])
-            .sort(["year_int", "period_int"])
-        )
+        df_sorted = df_joined.with_columns(
+            [
+                pl.coalesce(
+                    [pl.col("period_int_raw"), pl.col("month_int"), pl.lit(1)]
+                ).alias("period_int")
+            ]
+        ).sort(["year_int", "period_int"])
 
         columns_to_drop = [
             "year_int",
@@ -563,9 +582,11 @@ class DataGraph(DataIndex):
             "month_name_raw",
             "month_name",
             "month_int",
-            "period_int"
+            "period_int",
         ]
-        df_sorted = df_sorted.drop([col for col in columns_to_drop if col in df_sorted.columns])
+        df_sorted = df_sorted.drop(
+            [col for col in columns_to_drop if col in df_sorted.columns]
+        )
 
         x_order = df_sorted["time_period"].to_list()
 
@@ -585,55 +606,50 @@ class DataGraph(DataIndex):
                     "time_period:N",
                     title="Periodo",
                     sort=x_order,
-                    axis=alt.Axis(labelAngle=-45, values=tick_vals)
+                    axis=alt.Axis(labelAngle=-45, values=tick_vals),
                 ),
-                y=alt.Y(
-                    f"{metric}:Q",
-                    title="USD",
-                    axis=alt.Axis(format=".0f")
-                ),
+                y=alt.Y(f"{metric}:Q", title="USD", axis=alt.Axis(format=".0f")),
                 tooltip=[
                     alt.Tooltip("time_period:N", title="Periodo"),
-                    alt.Tooltip(f"{metric}:Q", title="USD", format=".0f")
-                ]
+                    alt.Tooltip(f"{metric}:Q", title="USD", format=".0f"),
+                ],
             )
             .properties(
                 width="container",
                 height=300,
-                #title=f"Evolución de {metric.replace('_',' ')} ({period.capitalize()})"
+                # title=f"Evolución de {metric.replace('_',' ')} ({period.capitalize()})"
             )
             .configure_view(fill="#e6f7ff")
             .configure_axis(grid=True, gridColor="white")
             .interactive(bind_y=False)
         )
         columns = [
-        {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
-        for col in columns if col["value"] != "fiscal_year"
-    ]
+            {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
+            for col in columns
+            if col["value"] != "fiscal_year"
+        ]
 
         columns = [
-        {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
-        for col in columns
-    ]
+            {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
+            for col in columns
+        ]
 
         return chart, columns
 
     def create_demographic_graph(self, time_frame: str, column: str):
         df = self.jp_demographic_data(time_frame)
 
-        excluded_columns = ['time_period', 'year', 'fiscal_year', 'month', 'quarter']
+        excluded_columns = ["time_period", "year", "fiscal_year", "month", "quarter"]
 
-        columns = [
-            {"value": "componentes", "label": "Componentes"}
-        ] + [
+        columns = [{"value": "componentes", "label": "Componentes"}] + [
             {"value": col, "label": col.replace("_", " ").capitalize()}
             for col in df.columns
             if col not in excluded_columns
         ]
-        
+
         chart_width = "container"
 
-        x_values = df.select('time_period').unique().to_series().to_list()
+        x_values = df.select("time_period").unique().to_series().to_list()
 
         if time_frame == "monthly":
             tick_vals = x_values[::6]
@@ -641,27 +657,29 @@ class DataGraph(DataIndex):
             tick_vals = x_values[::3]
         else:
             tick_vals = x_values
-        
-        if column == 'componentes':
+
+        if column == "componentes":
             df = df.drop("populacion")
             df = df.melt(
                 id_vars="time_period",
-                value_vars=["nacimientos", "muertes", "migraciones"]
+                value_vars=["nacimientos", "muertes", "migraciones"],
             )
-            
+
             chart = (
                 (
                     alt.Chart(df)
                     .mark_line()
                     .encode(
-                        x=alt.X("time_period:N", title="", axis=alt.Axis(values=tick_vals)),
+                        x=alt.X(
+                            "time_period:N", title="", axis=alt.Axis(values=tick_vals)
+                        ),
                         y=alt.Y("value:Q", title=""),
                         color=alt.Color("variable:N", title=""),
                         tooltip=[
                             alt.Tooltip("time_period:N", title="Periodo"),
                             alt.Tooltip("variable:N", title="Serie"),
-                            alt.Tooltip("value:Q", title="Valor")
-                        ]
+                            alt.Tooltip("value:Q", title="Valor"),
+                        ],
                     )
                     .properties(
                         width=chart_width, padding={"top": 10, "bottom": 10, "left": 30}
@@ -677,7 +695,10 @@ class DataGraph(DataIndex):
                     .mark_line()
                     .encode(
                         x=alt.X(
-                            f"time_period:N", title="", scale=alt.Scale(zero=False), axis=alt.Axis(values=tick_vals)
+                            f"time_period:N",
+                            title="",
+                            scale=alt.Scale(zero=False),
+                            axis=alt.Axis(values=tick_vals),
                         ),
                         y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(zero=False)),
                         tooltip=[
@@ -695,37 +716,44 @@ class DataGraph(DataIndex):
                 .configure_axis(gridColor="white", grid=True)
             )
         return chart, columns
-    
+
     def create_proyecciones_graph(self, time_frame: str, column: str):
         df = self.jp_proyecciones_data(time_frame)
 
-        if time_frame == 'yearly':
-            time_period = 'year'
-        elif time_frame == 'fiscal':
-            time_period = 'fyear'
-        elif time_frame == 'monthly':
-            time_period = 'date'
-        elif time_frame == 'quarterly':
-            time_period = 'date'
+        if time_frame == "yearly":
+            time_period = "year"
+        elif time_frame == "fiscal":
+            time_period = "fyear"
+        elif time_frame == "monthly":
+            time_period = "date"
+        elif time_frame == "quarterly":
+            time_period = "date"
         else:
             raise ValueError("Invalid time frame.")
 
-        df = df.with_columns((pl.col(time_period)).alias('time_period'))
-        df = df.sort('time_period')
+        df = df.with_columns((pl.col(time_period)).alias("time_period"))
+        df = df.sort("time_period")
 
-        excluded_columns = ['fyear', 'year', 'date', 'time_period', 'pop_change', 'pop_equation', 'pop_diff', 'diff_percentage']
+        excluded_columns = [
+            "fyear",
+            "year",
+            "date",
+            "time_period",
+            "pop_change",
+            "pop_equation",
+            "pop_diff",
+            "diff_percentage",
+        ]
 
-        columns = [
-            {"value": "componentes", "label": "Componentes"}
-        ] + [
+        columns = [{"value": "componentes", "label": "Componentes"}] + [
             {"value": col, "label": col.replace("_", " ").capitalize()}
             for col in df.columns
             if col not in excluded_columns
         ]
-        
+
         chart_width = "container"
 
-        x_values = df.select('time_period').unique().to_series().to_list()
+        x_values = df.select("time_period").unique().to_series().to_list()
 
         if time_frame == "monthly":
             tick_vals = x_values[::6]
@@ -733,27 +761,29 @@ class DataGraph(DataIndex):
             tick_vals = x_values[::3]
         else:
             tick_vals = x_values
-        
-        if column == 'componentes':
+
+        if column == "componentes":
             df = df.drop("populacion")
             df = df.melt(
                 id_vars="time_period",
-                value_vars=["nacimientos", "muertes", "migraciones"]
+                value_vars=["nacimientos", "muertes", "migraciones"],
             )
-            
+
             chart = (
                 (
                     alt.Chart(df)
                     .mark_line()
                     .encode(
-                        x=alt.X("time_period:N", title="", axis=alt.Axis(values=tick_vals)),
+                        x=alt.X(
+                            "time_period:N", title="", axis=alt.Axis(values=tick_vals)
+                        ),
                         y=alt.Y("value:Q", title=""),
                         color=alt.Color("variable:N", title=""),
                         tooltip=[
                             alt.Tooltip("time_period:N", title="Periodo"),
                             alt.Tooltip("variable:N", title="Serie"),
-                            alt.Tooltip("value:Q", title="Valor")
-                        ]
+                            alt.Tooltip("value:Q", title="Valor"),
+                        ],
                     )
                     .properties(
                         width=chart_width, padding={"top": 10, "bottom": 10, "left": 30}
@@ -769,7 +799,10 @@ class DataGraph(DataIndex):
                     .mark_line()
                     .encode(
                         x=alt.X(
-                            f"time_period:N", title="", scale=alt.Scale(zero=False), axis=alt.Axis(values=tick_vals)
+                            f"time_period:N",
+                            title="",
+                            scale=alt.Scale(zero=False),
+                            axis=alt.Axis(values=tick_vals),
                         ),
                         y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(zero=False)),
                         tooltip=[
@@ -787,38 +820,44 @@ class DataGraph(DataIndex):
                 .configure_axis(gridColor="white", grid=True)
             )
         return chart, columns
-    
-    
+
     def create_proyecciones_graph(self, time_frame: str, column: str):
         df = self.jp_proyecciones_data(time_frame)
 
-        if time_frame == 'yearly':
-            time_period = 'year'
-        elif time_frame == 'fiscal':
-            time_period = 'fyear'
-        elif time_frame == 'monthly':
-            time_period = 'date'
-        elif time_frame == 'quarterly':
-            time_period = 'date'
+        if time_frame == "yearly":
+            time_period = "year"
+        elif time_frame == "fiscal":
+            time_period = "fyear"
+        elif time_frame == "monthly":
+            time_period = "date"
+        elif time_frame == "quarterly":
+            time_period = "date"
         else:
             raise ValueError("Invalid time frame.")
 
-        df = df.with_columns((pl.col(time_period)).alias('time_period'))
-        df = df.sort('time_period')
+        df = df.with_columns((pl.col(time_period)).alias("time_period"))
+        df = df.sort("time_period")
 
-        excluded_columns = ['fyear', 'year', 'date', 'time_period', 'pop_change', 'pop_equation', 'pop_diff', 'diff_percentage']
+        excluded_columns = [
+            "fyear",
+            "year",
+            "date",
+            "time_period",
+            "pop_change",
+            "pop_equation",
+            "pop_diff",
+            "diff_percentage",
+        ]
 
-        columns = [
-            {"value": "componentes", "label": "Componentes"}
-        ] + [
+        columns = [{"value": "componentes", "label": "Componentes"}] + [
             {"value": col, "label": col.replace("_", " ").capitalize()}
             for col in df.columns
             if col not in excluded_columns
         ]
-        
+
         chart_width = "container"
 
-        x_values = df.select('time_period').unique().to_series().to_list()
+        x_values = df.select("time_period").unique().to_series().to_list()
 
         if time_frame == "monthly":
             tick_vals = x_values[::6]
@@ -826,27 +865,29 @@ class DataGraph(DataIndex):
             tick_vals = x_values[::3]
         else:
             tick_vals = x_values
-        
-        if column == 'componentes':
+
+        if column == "componentes":
             df = df.drop("populacion")
             df = df.melt(
                 id_vars="time_period",
-                value_vars=["nacimientos", "muertes", "migraciones"]
+                value_vars=["nacimientos", "muertes", "migraciones"],
             )
-            
+
             chart = (
                 (
                     alt.Chart(df)
                     .mark_line()
                     .encode(
-                        x=alt.X("time_period:N", title="", axis=alt.Axis(values=tick_vals)),
+                        x=alt.X(
+                            "time_period:N", title="", axis=alt.Axis(values=tick_vals)
+                        ),
                         y=alt.Y("value:Q", title=""),
                         color=alt.Color("variable:N", title=""),
                         tooltip=[
                             alt.Tooltip("time_period:N", title="Periodo"),
                             alt.Tooltip("variable:N", title="Serie"),
-                            alt.Tooltip("value:Q", title="Valor")
-                        ]
+                            alt.Tooltip("value:Q", title="Valor"),
+                        ],
                     )
                     .properties(
                         width=chart_width, padding={"top": 10, "bottom": 10, "left": 30}
@@ -862,7 +903,10 @@ class DataGraph(DataIndex):
                     .mark_line()
                     .encode(
                         x=alt.X(
-                            f"time_period:N", title="", scale=alt.Scale(zero=False), axis=alt.Axis(values=tick_vals)
+                            f"time_period:N",
+                            title="",
+                            scale=alt.Scale(zero=False),
+                            axis=alt.Axis(values=tick_vals),
                         ),
                         y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(zero=False)),
                         tooltip=[
@@ -880,55 +924,64 @@ class DataGraph(DataIndex):
                 .configure_axis(gridColor="white", grid=True)
             )
         return chart, columns
-    
+
     def create_revenue_chart(self, period: str, metric: str):
         df_grouped, columns = self.process_revenue_data(period, metric)
 
         month_map = {
-            "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4,
-            "May": 5, "Jun": 6, "Jul": 7, "Aug": 8,
-            "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
+            "Jan": 1,
+            "Feb": 2,
+            "Mar": 3,
+            "Apr": 4,
+            "May": 5,
+            "Jun": 6,
+            "Jul": 7,
+            "Aug": 8,
+            "Sep": 9,
+            "Oct": 10,
+            "Nov": 11,
+            "Dec": 12,
         }
 
-        months_lookup = pl.DataFrame({
-            "month_name": list(month_map.keys()),
-            "month_int":   list(month_map.values())
-        })
+        months_lookup = pl.DataFrame(
+            {
+                "month_name": list(month_map.keys()),
+                "month_int": list(month_map.values()),
+            }
+        )
 
-        df_aux = df_grouped.with_columns([
-            pl.col("time_period").str.extract(r"^(\d+)", 1).cast(pl.Int32).alias("year_int"),
-
-            pl.when(pl.col("time_period").str.contains(r"-q[1-4]$"))
-            .then(pl.col("time_period").str.extract(r"-q([1-4])$", 1).cast(pl.Int32))
-            .when(pl.col("time_period").str.contains(r"-(\d+)$"))
-            .then(pl.col("time_period").str.extract(r"-(\d+)$", 1).cast(pl.Int32))
-            .otherwise(pl.lit(None))
-            .alias("period_int_raw"),
-
-            pl.when(pl.col("time_period").str.contains(r"-[A-Za-z]+$"))
-            .then(pl.col("time_period").str.extract(r"-(\w+)$", 1))
-            .otherwise(pl.lit(None))
-            .alias("month_name_raw")
-        ])
+        df_aux = df_grouped.with_columns(
+            [
+                pl.col("time_period")
+                .str.extract(r"^(\d+)", 1)
+                .cast(pl.Int32)
+                .alias("year_int"),
+                pl.when(pl.col("time_period").str.contains(r"-q[1-4]$"))
+                .then(
+                    pl.col("time_period").str.extract(r"-q([1-4])$", 1).cast(pl.Int32)
+                )
+                .when(pl.col("time_period").str.contains(r"-(\d+)$"))
+                .then(pl.col("time_period").str.extract(r"-(\d+)$", 1).cast(pl.Int32))
+                .otherwise(pl.lit(None))
+                .alias("period_int_raw"),
+                pl.when(pl.col("time_period").str.contains(r"-[A-Za-z]+$"))
+                .then(pl.col("time_period").str.extract(r"-(\w+)$", 1))
+                .otherwise(pl.lit(None))
+                .alias("month_name_raw"),
+            ]
+        )
 
         df_joined = df_aux.join(
-            months_lookup,
-            left_on="month_name_raw",
-            right_on="month_name",
-            how="left"
+            months_lookup, left_on="month_name_raw", right_on="month_name", how="left"
         )
 
-        df_sorted = (
-            df_joined
-            .with_columns([
-                pl.coalesce([
-                    pl.col("period_int_raw"),
-                    pl.col("month_int"),
-                    pl.lit(1)
-                ]).alias("period_int")
-            ])
-            .sort(["year_int", "period_int"])
-        )
+        df_sorted = df_joined.with_columns(
+            [
+                pl.coalesce(
+                    [pl.col("period_int_raw"), pl.col("month_int"), pl.lit(1)]
+                ).alias("period_int")
+            ]
+        ).sort(["year_int", "period_int"])
 
         columns_to_drop = [
             "year_int",
@@ -936,9 +989,11 @@ class DataGraph(DataIndex):
             "month_name_raw",
             "month_name",
             "month_int",
-            "period_int"
+            "period_int",
         ]
-        df_sorted = df_sorted.drop([col for col in columns_to_drop if col in df_sorted.columns])
+        df_sorted = df_sorted.drop(
+            [col for col in columns_to_drop if col in df_sorted.columns]
+        )
 
         x_order = df_sorted["time_period"].to_list()
 
@@ -958,50 +1013,47 @@ class DataGraph(DataIndex):
                     "time_period:N",
                     title="Periodo",
                     sort=x_order,
-                    axis=alt.Axis(labelAngle=-45, values=tick_vals)
+                    axis=alt.Axis(labelAngle=-45, values=tick_vals),
                 ),
-                y=alt.Y(
-                    f"{metric}:Q",
-                    title="USD",
-                    axis=alt.Axis(format=".0f")
-                ),
+                y=alt.Y(f"{metric}:Q", title="USD", axis=alt.Axis(format=".0f")),
                 tooltip=[
                     alt.Tooltip("time_period:N", title="Periodo"),
-                    alt.Tooltip(f"{metric}:Q", title="USD", format=".0f")
-                ]
+                    alt.Tooltip(f"{metric}:Q", title="USD", format=".0f"),
+                ],
             )
             .properties(
                 width="container",
                 height=300,
-                #title=f"Evolución de {metric.replace('_',' ')} ({period.capitalize()})"
+                # title=f"Evolución de {metric.replace('_',' ')} ({period.capitalize()})"
             )
             .configure_view(fill="#e6f7ff")
             .configure_axis(grid=True, gridColor="white")
             .interactive(bind_y=False)
         )
         columns = [
-        {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
-        for col in columns if col["value"] != "fiscal_year"
-    ]
+            {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
+            for col in columns
+            if col["value"] != "fiscal_year"
+        ]
 
         columns = [
-        {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
-        for col in columns
+            {"label": self.format_label_estatal(col["value"]), "value": col["value"]}
+            for col in columns
         ]
         return chart, columns
-    
-    def create_macro_graph(
-        self, time_frame: str, column: str
-    ) -> alt.Chart:
+
+    def create_macro_graph(self, time_frame: str, column: str) -> alt.Chart:
         df_1950, df_2001 = self.pull_macrodata(time_frame)
         df = df_1950
-        df = df.rename({
-            col: col.replace(" ", "_")
-                    .replace(".", "")
-                    .replace("[", "")
-                    .replace("]", "")
-            for col in df.columns
-        })
+        df = df.rename(
+            {
+                col: col.replace(" ", "_")
+                .replace(".", "")
+                .replace("[", "")
+                .replace("]", "")
+                for col in df.columns
+            }
+        )
 
         df = df.fill_null(0).fill_nan(0)
 
@@ -1043,7 +1095,10 @@ class DataGraph(DataIndex):
                 .mark_line()
                 .encode(
                     x=alt.X(
-                        f"{frequency}:N", title="", axis=alt.Axis(values=tick_vals), scale=alt.Scale(zero=False)
+                        f"{frequency}:N",
+                        title="",
+                        axis=alt.Axis(values=tick_vals),
+                        scale=alt.Scale(zero=False),
                     ),
                     y=alt.Y(f"{column}:Q", title=f"", scale=alt.Scale(zero=False)),
                     tooltip=[
@@ -1060,6 +1115,7 @@ class DataGraph(DataIndex):
             .configure_view(fill="#e6f7ff")
             .configure_axis(gridColor="white", grid=True)
         )
-        chart.save('macro.html')
+        chart.save("macro.html")
 
         return chart, columns
+
