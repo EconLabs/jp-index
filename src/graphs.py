@@ -1042,9 +1042,16 @@ class DataGraph(DataIndex):
         ]
         return chart, columns
 
-    def create_macro_graph(self, time_frame: str, column: str) -> alt.Chart:
+    def create_macro_graph(self, time_frame: str, column: str, data_type: str) -> alt.Chart:
         df_1950, df_2001 = self.pull_macrodata(time_frame)
-        df = df_1950
+        if data_type == 'df_1950':
+            df = df_1950
+        elif data_type == 'df_2001':
+            df = df_2001
+        else:
+            raise ValueError("Data type not valid.")
+        
+        df = df
         df = df.rename(
             {
                 col: col.replace(" ", "_")
