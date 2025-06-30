@@ -2408,7 +2408,7 @@ class DataPull:
                 filename=f"{self.saving_dir}raw/macro_2001.xlsx",
             )
         df_1950 = self.clean_macro(f"{self.saving_dir}raw/macro_1950.xlsx")
-        df_2000 = self.clean_macro(f"{self.saving_dir}raw/macro_1950.xlsx")
+        df_2000 = self.clean_macro(f"{self.saving_dir}raw/macro_2001.xlsx")
         df_2000 = df_2000.with_columns(pl.col("periodo = año fiscal") + 2000)
 
         match time_frame:
@@ -2438,6 +2438,7 @@ class DataPull:
                 .str.replace_all("$", "", literal=True)
                 .str.replace_all("(", "", literal=True)
                 .str.replace_all(")", "", literal=True)
+                .str.replace_all("'", "", literal=True)
                 .str.replace_all(",", "")
                 .str.replace_all("-", "")
                 .str.strip_chars()
